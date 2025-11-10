@@ -16,7 +16,7 @@
     "environment": "*",
     "entrypoints": {
         "main": [
-            "me.gergerapex1.servergotflared.Servergotflared"
+          "me.gergerapex1.serverflared.Serverflared"
         ]
     },
     "depends": {
