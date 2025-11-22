@@ -14,6 +14,7 @@ public class Constants {
 	public static final String CLOUDFLARED_CERT_FILE = "cert.pem";
 	public static final String CLOUDFLARED_DIR_NAME = ".cloudflared";
 	public static final String BINARIES_DIR = "binaries";
+	// Used for both mod config subdirectory and system cloudflared directories
 	public static final String CONFIG_DIR = "cloudflared";
 	
 	// Cloudflared commands

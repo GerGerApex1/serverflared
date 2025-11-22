@@ -4,10 +4,10 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.Date;
 
 public class TunnelInfo {
-    String id;
-    String name;
-    Date created;
-    Connector[] connectors;
+    private String id;
+    private String name;
+    private Date created;
+    private Connector[] connectors;
     
     public Date getCreated() {
         return created;
@@ -43,16 +43,16 @@ public class TunnelInfo {
     
     public static class Connector {
         @JsonProperty("connector_id")
-        String connectorId;
+        private String connectorId;
         
-        String created;
-        String architecture;
-        String version;
+        private String created;
+        private String architecture;
+        private String version;
         
         @JsonProperty("origin_ip")
-        String originIp;
+        private String originIp;
         
-        String edge;
+        private String edge;
 
         public String getEdge() {
             return edge;
