@@ -9,32 +9,40 @@ import me.gergerapex1.serverflared.platform.Services;
 
 public class ConfigManager {
     public boolean firstTime = false;
-    private YamlHandler handler = new YamlHandler();
+    private final YamlHandler handler = new YamlHandler();
     public Config CONFIG;
+    
     public ConfigManager() {
-        Path configFilePath = Paths.get(Services.PLATFORM.getConfigDirectory().toString(), "cloudflared", "config.yml");
+        Path configFilePath = getConfigFilePath();
         try {
-            _createConfigFileIfNotExist(configFilePath);
+            createConfigFileIfNotExist(configFilePath);
             CONFIG = handler.readFromYaml(configFilePath.toString(), Config.class);
         } catch (IOException e) {
-            Constants.LOG.error(e.getMessage());
+            Constants.LOG.error("Failed to load config: {}", e.getMessage());
         }
     }
+    
     public void saveConfig() {
-        Path configFilePath = Paths.get(Services.PLATFORM.getConfigDirectory().toString(), "cloudflared", "config.yml");
+        Path configFilePath = getConfigFilePath();
         try {
             handler.writeToYaml(configFilePath.toString(), CONFIG);
         } catch (IOException e) {
-            Constants.LOG.error(e.getMessage());
+            Constants.LOG.error("Failed to save config: {}", e.getMessage());
         }
     }
-    private void _createConfigFileIfNotExist(Path configFilePath) throws IOException {
+    
+    private Path getConfigFilePath() {
+        return Paths.get(Services.PLATFORM.getConfigDirectory().toString(), 
+                         Constants.CONFIG_DIR, "config.yml");
+    }
+    
+    private void createConfigFileIfNotExist(Path configFilePath) throws IOException {
         Path parent = configFilePath.getParent();
         if (parent != null) {
-            Files.createDirectories(parent); // make parent dirs if needed
+            Files.createDirectories(parent);
         }
         if (Files.notExists(configFilePath)) {
-            Files.createFile(configFilePath); // create file if it doesn't exist
+            Files.createFile(configFilePath);
             firstTime = true;
             Config defaultConfig = new Config();
             handler.writeToYaml(configFilePath.toString(), defaultConfig);

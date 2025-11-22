@@ -4,8 +4,9 @@ import java.util.UUID;
 
 public class Config{
     private String tunnelId = new UUID(0, 0).toString();
-    private String tunnelName = "servergotflared-tunnel";
+    private String tunnelName = "serverflared-tunnel";
     private String hostname = "subdomain.example.com";
+    
     public String getHostname() {
         return hostname;
     }
@@ -29,5 +30,4 @@ public class Config{
     public void setTunnelName(String tunnelName) {
         this.tunnelName = tunnelName;
     }
-
 }
