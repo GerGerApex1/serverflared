@@ -1,5 +1,6 @@
 package me.gergerapex1.serverflared.cloudflared.handler;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.Date;
 
 public class TunnelInfo {
@@ -41,11 +42,16 @@ public class TunnelInfo {
     }
     
     public static class Connector {
+        @JsonProperty("connector_id")
         String connectorId;
+        
         String created;
         String architecture;
         String version;
+        
+        @JsonProperty("origin_ip")
         String originIp;
+        
         String edge;
 
         public String getEdge() {

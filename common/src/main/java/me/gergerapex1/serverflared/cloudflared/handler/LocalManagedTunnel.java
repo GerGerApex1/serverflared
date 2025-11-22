@@ -30,7 +30,7 @@ public class LocalManagedTunnel {
     }
     public TunnelInfo createTunnel(TunnelInfo tunnelInfo) {
         try {
-            Process tunnelCreation = executor.executeCommandAsync(Constants.CMD_TUNNEL, Constants.CMD_CREATE, tunnelInfo.name);
+            Process tunnelCreation = executor.executeCommandAsync(Constants.CMD_TUNNEL, Constants.CMD_CREATE, tunnelInfo.getName());
             BufferedReader reader = new BufferedReader(new InputStreamReader(tunnelCreation.getInputStream()));
             String line;
             String tunnelId;
