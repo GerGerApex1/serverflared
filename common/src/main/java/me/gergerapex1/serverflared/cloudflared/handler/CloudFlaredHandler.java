@@ -27,55 +27,69 @@ public class CloudFlaredHandler {
         this.binaryPath = binaryPath;
     }
     public static CloudFlaredHandler createInstance() {
-        if(BinaryHandler.binaryExistInPath()) {
-            if(BinaryHandler.checkCloudflaredVersion("cloudflared")) {
-                return new CloudFlaredHandler("cloudflared");
+        if (BinaryHandler.binaryExistInPath()) {
+            if (BinaryHandler.checkCloudflaredVersion(Constants.CLOUDFLARED_BINARY_NAME)) {
+                return new CloudFlaredHandler(Constants.CLOUDFLARED_BINARY_NAME);
             }
-        } else {
-            Path binariesFolder = Paths.get(Services.PLATFORM.getGameDirectory().toString(), "binaries");
-            if(Files.notExists(binariesFolder)) {
-                try {
-                    Files.createDirectories(binariesFolder);
-                } catch (Exception e) {
-                    Constants.LOG.error(e);
-                }
-            }
-            Platform osArch = Platform.detect();
-            String binaryName = "cloudflared-" + osArch.getOs() + "-" + osArch.getArch() + "-" +osArch.getFileExtension();
-            Download.binary(binaryName, binaryName, binariesFolder.toString());
-            if(osArch.getOs().equals("mac")) {
-                ProcessBuilder processBuilder = new ProcessBuilder("tar", "-xvzf", Paths.get(binariesFolder.toString(), binaryName).toString(), "-C", binariesFolder.toString());
-                try {
-                    Process process = processBuilder.start();
-                    process.waitFor();
-                } catch (IOException | InterruptedException e) {
-                    Constants.LOG.error(e);
-                }
-            }
-            return new CloudFlaredHandler(Paths.get(binariesFolder.toString(), "cloudflared" + osArch.getFileExtension()).toString());
         }
-        return null;
+        
+        return createInstanceFromDownloadedBinary();
+    }
+    
+    private static CloudFlaredHandler createInstanceFromDownloadedBinary() {
+        Path binariesFolder = createBinariesFolder();
+        if (binariesFolder == null) {
+            return null;
+        }
+        
+        Platform osArch = Platform.detect();
+        String binaryName = buildBinaryName(osArch);
+        Download.binary(binaryName, binaryName, binariesFolder.toString());
+        
+        if (osArch.getOs().equals("mac")) {
+            extractMacBinary(binariesFolder, binaryName);
+        }
+        
+        String binaryPath = Paths.get(binariesFolder.toString(), 
+            Constants.CLOUDFLARED_BINARY_NAME + osArch.getFileExtension()).toString();
+        return new CloudFlaredHandler(binaryPath);
+    }
+    
+    private static Path createBinariesFolder() {
+        Path binariesFolder = Paths.get(Services.PLATFORM.getGameDirectory().toString(), Constants.BINARIES_DIR);
+        if (Files.notExists(binariesFolder)) {
+            try {
+                Files.createDirectories(binariesFolder);
+            } catch (Exception e) {
+                Constants.LOG.error("Failed to create binaries folder", e);
+                return null;
+            }
+        }
+        return binariesFolder;
+    }
+    
+    private static String buildBinaryName(Platform osArch) {
+        return Constants.CLOUDFLARED_BINARY_NAME + "-" + osArch.getOs() + "-" + 
+               osArch.getArch() + "-" + osArch.getFileExtension();
+    }
+    
+    private static void extractMacBinary(Path binariesFolder, String binaryName) {
+        ProcessBuilder processBuilder = new ProcessBuilder(
+            "tar", "-xvzf", 
+            Paths.get(binariesFolder.toString(), binaryName).toString(), 
+            "-C", binariesFolder.toString()
+        );
+        try {
+            Process process = processBuilder.start();
+            process.waitFor();
+        } catch (IOException | InterruptedException e) {
+            Constants.LOG.error("Failed to extract Mac binary", e);
+        }
     }
     public Path getCloudflaredDirectory() {
-        String userHome = System.getenv("USERPROFILE");
-        if (userHome == null || userHome.isEmpty()) {
-            userHome = System.getProperty("user.home");
-        }
-
+        String userHome = getUserHome();
         String os = System.getProperty("os.name").toLowerCase();
-        Path[] pathLocations;
-        Path userhomePath = Paths.get(userHome, ".cloudflared");
-        if (os.contains("win")) {
-            pathLocations = new Path[] {
-                userhomePath
-            };
-        } else {
-            pathLocations = new Path[] {
-                userhomePath,
-                Paths.get("/etc/cloudflared"),
-                Paths.get("/usr/local/etc/cloudflared")
-            };
-        }
+        Path[] pathLocations = getCloudflaredPaths(userHome, os);
 
         for (Path p : pathLocations) {
             try {
@@ -89,10 +103,32 @@ public class CloudFlaredHandler {
         }
         return null;
     }
+    
+    private static String getUserHome() {
+        String userHome = System.getenv("USERPROFILE");
+        if (userHome == null || userHome.isEmpty()) {
+            userHome = System.getProperty("user.home");
+        }
+        return userHome;
+    }
+    
+    private static Path[] getCloudflaredPaths(String userHome, String os) {
+        Path userhomePath = Paths.get(userHome, Constants.CLOUDFLARED_DIR_NAME);
+        
+        if (os.contains("win")) {
+            return new Path[]{userhomePath};
+        } else {
+            return new Path[]{
+                userhomePath,
+                Paths.get("/etc", Constants.CONFIG_DIR),
+                Paths.get("/usr/local/etc", Constants.CONFIG_DIR)
+            };
+        }
+    }
     public boolean isAuthenticated() {
         Path cloudflaredDir = getCloudflaredDirectory();
         if (cloudflaredDir != null) {
-            Path certFile = cloudflaredDir.resolve("cert.pem");
+            Path certFile = cloudflaredDir.resolve(Constants.CLOUDFLARED_CERT_FILE);
             if (Files.exists(certFile)) {
                 Constants.LOG.debug("Cloudflared is authenticated.");
                 return true;
@@ -106,13 +142,13 @@ public class CloudFlaredHandler {
     }
     public void authenticate() {
         try {
-            Process process = processHandler.executeCommandAsync("tunnel", "login");
+            Process process = processHandler.executeCommandAsync(Constants.CMD_TUNNEL, Constants.CMD_LOGIN);
             Thread processThread = new Thread(() -> {
                 try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                     String line;
 
                     while ((line = reader.readLine()) != null) {
-                        Matcher m = URL_REGEX.matcher(line  );
+                        Matcher m = URL_REGEX.matcher(line);
 
                         if (m.matches()) {
                             Constants.LOG.info("Please authenticate cloudflared by visiting the following URL in your browser:");
@@ -149,14 +185,14 @@ public class CloudFlaredHandler {
     public TunnelInfo getTunnelInfo(String tunnelIdOrName) {
         TunnelInfo info = new TunnelInfo();
         try {
-            Process process = processHandler.executeCommandAsync("tunnel", "info", tunnelIdOrName);
+            Process process = processHandler.executeCommandAsync(Constants.CMD_TUNNEL, Constants.CMD_INFO, tunnelIdOrName);
             BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
             String line;
             while ((line = reader.readLine()) != null) {
                 Matcher matcher = TUNNEL_INFO_REGEX.matcher(line.trim());
                 Constants.LOG.info(line);
-                if(line.toLowerCase().contains("is neither the id nor the name of any of your tunnels") |
-                line.toLowerCase().contains("but found 0 tunnels")) {
+                
+                if (isTunnelNotFound(line)) {
                     Constants.LOG.error("Tunnel with ID or Name '{}' not found.", tunnelIdOrName);
                     return null;
                 }
@@ -183,6 +219,12 @@ public class CloudFlaredHandler {
             Constants.LOG.error("error", e);
         }
         return info;
+    }
+    
+    private static boolean isTunnelNotFound(String line) {
+        String lowerLine = line.toLowerCase();
+        return lowerLine.contains("is neither the id nor the name of any of your tunnels") ||
+               lowerLine.contains("but found 0 tunnels");
     }
     public String getBinaryPath() {
         return binaryPath;

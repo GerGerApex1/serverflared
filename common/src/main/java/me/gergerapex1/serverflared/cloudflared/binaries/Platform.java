@@ -6,8 +6,8 @@ public enum Platform {
     //386 = x86
     LINUX_AMD64("linux", "amd64"),
     LINUX_X86("linux", "386"),
-    LINUX_ARM64("linux", "arm"),
-    LINUX_ARM("linux", "arm64"),
+    LINUX_ARM("linux", "arm"),
+    LINUX_ARM64("linux", "arm64"),
     WINDOWS_AMD64("windows", "amd64"),
     WINDOWS_X86("windows", "386"),
     UNKNOWN("unknown","unknown");

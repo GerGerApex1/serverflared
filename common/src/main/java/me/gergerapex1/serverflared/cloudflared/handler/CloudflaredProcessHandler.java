@@ -1,4 +1,4 @@
-// File: common/src/main/java/me/gergerapex1/servergotflared/cloudflared/handler/CloudFlaredProcessExecutor.java
+// File: common/src/main/java/me/gergerapex1/serverflared/cloudflared/handler/CloudflaredProcessHandler.java
 package me.gergerapex1.serverflared.cloudflared.handler;
 
 import java.io.BufferedReader;
@@ -12,24 +12,17 @@ import me.gergerapex1.serverflared.Constants;
 public class CloudflaredProcessHandler {
     private final String binaryPath;
     private final ArrayList<Long> pids = new ArrayList<>();
+    
     public CloudflaredProcessHandler(String binaryPath) {
         this.binaryPath = binaryPath;
     }
+    
     public int executeCommand(String... command) {
         try {
-            List<String> cmdList = new ArrayList<>(Arrays.asList(command));
-            cmdList.addFirst(binaryPath);
-            Constants.LOG.debug("Executing: {}", String.join(" ", cmdList));
-
-            ProcessBuilder processBuilder = new ProcessBuilder(cmdList);
-            processBuilder.redirectErrorStream(true);
-            Process process = processBuilder.start();
+            Process process = startProcess(command);
             pids.add(process.pid());
-            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-            String line;
-            while ((line = reader.readLine()) != null) {
-                Constants.LOG.debug(line);
-            }
+            logProcessOutput(process);
+            
             int exitCode = process.waitFor();
             if (exitCode != 0) {
                 Constants.LOG.error("Command failed with exit code: {}", exitCode);
@@ -42,17 +35,37 @@ public class CloudflaredProcessHandler {
     }
 
     public Process executeCommandAsync(String... command) throws IOException {
-        List<String> cmdList = new ArrayList<>(Arrays.asList(command));
-        cmdList.addFirst(binaryPath);
-
-        ProcessBuilder processBuilder = new ProcessBuilder(cmdList);
-        processBuilder.redirectErrorStream(true);
-        Process process = processBuilder.start();
+        Process process = startProcess(command);
         pids.add(process.pid());
         return process;
     }
+    
+    private Process startProcess(String... command) throws IOException {
+        List<String> cmdList = buildCommandList(command);
+        Constants.LOG.debug("Executing: {}", String.join(" ", cmdList));
+        
+        ProcessBuilder processBuilder = new ProcessBuilder(cmdList);
+        processBuilder.redirectErrorStream(true);
+        return processBuilder.start();
+    }
+    
+    private List<String> buildCommandList(String... command) {
+        List<String> cmdList = new ArrayList<>(Arrays.asList(command));
+        cmdList.addFirst(binaryPath);
+        return cmdList;
+    }
+    
+    private void logProcessOutput(Process process) throws IOException {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                Constants.LOG.debug(line);
+            }
+        }
+    }
+    
     public void terminate() {
-        for(Long pid : pids) {
+        for (Long pid : pids) {
             ProcessHandle.of(pid).ifPresent(ProcessHandle::destroy);
             Constants.LOG.info("Terminated cloudflared process with PID: {}", pid);
         }

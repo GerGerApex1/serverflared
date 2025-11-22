@@ -17,48 +17,62 @@ import org.apache.http.util.EntityUtils;
 
 public class Download {
     private static final String BASE_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download/";
+    private static final int BUFFER_SIZE = 8192;
+    private static final int HTTP_OK = 200;
+    
     public static void binary(String archiveName, String filename, String savedDir) {
         try {
-            // ProgressBarBuilder barBuilder = new ProgressBarBuilder()
-            //     .setTaskName("Downloading cloudflared")
-            //     .setConsumer(new DelegatingProgressBarConsumer(logger::info));
             String downloadUrl = BASE_URL + archiveName;
-
-            Path outputPath = Paths.get(savedDir + File.separator + filename);
-            Path parent = outputPath.getParent();
-            if (parent != null) {
-                Files.createDirectories(parent);
-            }
-
-            HttpClientBuilder builder = HttpClientBuilder.create()
-                .setRedirectStrategy(new LaxRedirectStrategy());
-
-            try (CloseableHttpClient httpClient = builder.build()) {
-                HttpGet httpGet = new HttpGet(downloadUrl);
-                httpClient.execute(httpGet, classicHttpResponse -> {
-                    int code = classicHttpResponse.getStatusLine().getStatusCode();
-                    if (code == 200) {
-                        HttpEntity entity = classicHttpResponse.getEntity();
-                        if (entity != null) {
-                            try (InputStream inputStream = entity.getContent();
-                                OutputStream out = Files.newOutputStream(outputPath);) {
-                                    byte[] buffer = new byte[8192];
-                                    int bytesRead;
-                                    while ((bytesRead = inputStream.read(buffer)) != -1) {
-                                        out.write(buffer, 0, bytesRead);
-                                        //ProgressBar.wrap(inputStream, barBuilder);
-                                    }
-                            }
-                        }
-                        EntityUtils.consume(entity);
-                    } else {
-                        Constants.LOG.error("Failed to download binary: {}", code);
-                    }
-                    return classicHttpResponse;
-                });
+            Path outputPath = prepareOutputPath(savedDir, filename);
+            
+            try (CloseableHttpClient httpClient = createHttpClient()) {
+                downloadFile(httpClient, downloadUrl, outputPath);
             }
         } catch (IOException e) {
             Constants.LOG.error("Failed to download binary: {}", e.getMessage());
+        }
+    }
+    
+    private static Path prepareOutputPath(String savedDir, String filename) throws IOException {
+        Path outputPath = Paths.get(savedDir + File.separator + filename);
+        Path parent = outputPath.getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
+        }
+        return outputPath;
+    }
+    
+    private static CloseableHttpClient createHttpClient() {
+        return HttpClientBuilder.create()
+            .setRedirectStrategy(new LaxRedirectStrategy())
+            .build();
+    }
+    
+    private static void downloadFile(CloseableHttpClient httpClient, String downloadUrl, Path outputPath) throws IOException {
+        HttpGet httpGet = new HttpGet(downloadUrl);
+        httpClient.execute(httpGet, classicHttpResponse -> {
+            int code = classicHttpResponse.getStatusLine().getStatusCode();
+            if (code == HTTP_OK) {
+                HttpEntity entity = classicHttpResponse.getEntity();
+                if (entity != null) {
+                    copyStreamToFile(entity.getContent(), outputPath);
+                }
+                EntityUtils.consume(entity);
+            } else {
+                Constants.LOG.error("Failed to download binary: HTTP {}", code);
+            }
+            return classicHttpResponse;
+        });
+    }
+    
+    private static void copyStreamToFile(InputStream inputStream, Path outputPath) throws IOException {
+        try (InputStream in = inputStream;
+             OutputStream out = Files.newOutputStream(outputPath)) {
+            byte[] buffer = new byte[BUFFER_SIZE];
+            int bytesRead;
+            while ((bytesRead = in.read(buffer)) != -1) {
+                out.write(buffer, 0, bytesRead);
+            }
         }
     }
 }
