@@ -3,10 +3,11 @@ package me.gergerapex1.serverflared.cloudflared.handler;
 import java.util.Date;
 
 public class TunnelInfo {
-    public String id;
-    public String name;
-    public Date created;
-    public Connector[] connectors;
+    String id;
+    String name;
+    Date created;
+    Connector[] connectors;
+    
     public Date getCreated() {
         return created;
     }
@@ -30,13 +31,22 @@ public class TunnelInfo {
     public void setName(String name) {
         this.name = name;
     }
+    
+    public Connector[] getConnectors() {
+        return connectors;
+    }
+    
+    public void setConnectors(Connector[] connectors) {
+        this.connectors = connectors;
+    }
+    
     public static class Connector {
-        public String connector_id;
-        public String created;
-        public String architecture;
-        public String version;
-        public String origin_ip;
-        public String edge;
+        String connectorId;
+        String created;
+        String architecture;
+        String version;
+        String originIp;
+        String edge;
 
         public String getEdge() {
             return edge;
@@ -46,12 +56,12 @@ public class TunnelInfo {
             this.edge = edge;
         }
 
-        public String getOrigin_ip() {
-            return origin_ip;
+        public String getOriginIp() {
+            return originIp;
         }
 
-        public void setOrigin_ip(String origin_ip) {
-            this.origin_ip = origin_ip;
+        public void setOriginIp(String originIp) {
+            this.originIp = originIp;
         }
 
         public String getVersion() {
@@ -70,12 +80,12 @@ public class TunnelInfo {
             this.architecture = architecture;
         }
 
-        public String getConnector_id() {
-            return connector_id;
+        public String getConnectorId() {
+            return connectorId;
         }
 
-        public void setConnector_id(String connector_id) {
-            this.connector_id = connector_id;
+        public void setConnectorId(String connectorId) {
+            this.connectorId = connectorId;
         }
 
         public String getCreated() {
