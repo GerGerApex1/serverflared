@@ -19,29 +19,36 @@ public class CommonClass {
     private static LocalManagedTunnel localHandler;
     private static TunnelInfo info = new TunnelInfo();
     public static void init() {
-        Constants.LOG.info("Initializing ServerGotFlared");
+        Constants.LOG.info("Initializing {}", Constants.MOD_NAME);
         Configurator.setAllLevels(Constants.LOG.getName(), Level.DEBUG);
         configManager = new ConfigManager();
         handler = CloudFlaredHandler.createInstance();
         localHandler = new LocalManagedTunnel(handler);
         //Download.binary(ArchVersions.WINDOWS_AMD64.getArchiveName(), ArchVersions.WINDOWS_AMD64.getArchiveName(), Paths.get(Services.PLATFORM.getGameDirectory().toString(), "binaries").toString());
-        if(configManager.firstTime) {
-            Constants.LOG.info("First time setup detected, please configure the TUNNEL NAME (\"tunnelName\") "
-                + "and HOSTNAME (\"hostname\") in the config file generated at {}",
-                Services.PLATFORM.getConfigDirectory().resolve("cloudflared").resolve("config.yml").toString());
-            Constants.LOG.info("If you have existing cloudflared tunnel or remotely managed tunnel, please configure the TUNNEL ID "
-                + "(\"tunnelID\") instead");
-            Constants.LOG.info("After configuring the tunnel name, please restart the server.");
-            Constants.LOG.info("Mod disabled.");
+        if (configManager.firstTime) {
+            logFirstTimeSetup();
             return;
         }
         if (handler == null) {
             Constants.LOG.error("Failed to create CloudFlaredHandler instance, mod disabled.");
             return;
         }
-        if(!handler.isAuthenticated()) {
+        if (!handler.isAuthenticated()) {
             CompletableFuture.runAsync(() -> handler.authenticate());
         }
+    }
+    
+    private static void logFirstTimeSetup() {
+        Path configPath = Services.PLATFORM.getConfigDirectory()
+            .resolve(Constants.CONFIG_DIR)
+            .resolve("config.yml");
+        
+        Constants.LOG.info("First time setup detected, please configure the TUNNEL NAME (\"tunnelName\") "
+            + "and HOSTNAME (\"hostname\") in the config file generated at {}", configPath.toString());
+        Constants.LOG.info("If you have existing cloudflared tunnel or remotely managed tunnel, please configure the TUNNEL ID "
+            + "(\"tunnelID\") instead");
+        Constants.LOG.info("After configuring the tunnel name, please restart the server.");
+        Constants.LOG.info("Mod disabled.");
     }
     public static void serverStarting() {
         Constants.LOG.info("Handling tunnel now...");
