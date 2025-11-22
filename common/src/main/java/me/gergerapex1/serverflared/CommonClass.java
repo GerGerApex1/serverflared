@@ -63,7 +63,7 @@ public class CommonClass {
         localHandler.terminate();
     }
     public static void runTunnelBackground() {
-        localHandler.runLocalTunnel(info.id);
+        localHandler.runLocalTunnel(info.getId());
     }
     private static void initiateTunnel() {
         // Check if tunnel exist with the config
@@ -77,7 +77,7 @@ public class CommonClass {
             localHandler.routeDnsToTunnel(newTunnelId.getId(), configManager.CONFIG.getHostname());
             initialTunnelInfo = newTunnelId;
 
-            configManager.CONFIG.setTunnelId(newTunnelId.id);
+            configManager.CONFIG.setTunnelId(newTunnelId.getId());
             configManager.saveConfig();
 
             Constants.LOG.info("New tunnel created with ID {}", newTunnelId);
