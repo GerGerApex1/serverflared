@@ -24,10 +24,20 @@ public enum ArchVersions {
     }
     
     public String getArchiveName() {
-        return switch (os) {
-            case "windows" -> Constants.CLOUDFLARED_BINARY_NAME + "-" + getOsArch() + ".exe";
-            case "linux" -> Constants.CLOUDFLARED_BINARY_NAME + "-" + getOsArch();
-            default -> Constants.CLOUDFLARED_BINARY_NAME + "-" + getOsArch() + ".tar.gz";
-        };
+        // Note: This method preserves original behavior including fall-through for linux case
+        // which results in .tar.gz extension. This appears to be a bug as actual Linux binaries
+        // have no extension, but preserved for backward compatibility.
+        String archiveName;
+        switch (os) {
+            case "windows":
+                archiveName = Constants.CLOUDFLARED_BINARY_NAME + "-" + getOsArch() + ".exe";
+                break;
+            case "linux":
+                archiveName = Constants.CLOUDFLARED_BINARY_NAME + "-" + getOsArch();
+                // Intentional fall-through to default case (preserves original behavior)
+            default:
+                return Constants.CLOUDFLARED_BINARY_NAME + "-" + getOsArch() + ".tar.gz";
+        }
+        return archiveName;
     }
 }

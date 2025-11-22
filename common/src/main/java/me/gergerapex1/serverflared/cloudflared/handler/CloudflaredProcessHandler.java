@@ -1,4 +1,4 @@
-// File: common/src/main/java/me/gergerapex1/servergotflared/cloudflared/handler/CloudFlaredProcessExecutor.java
+// File: common/src/main/java/me/gergerapex1/serverflared/cloudflared/handler/CloudflaredProcessHandler.java
 package me.gergerapex1.serverflared.cloudflared.handler;
 
 import java.io.BufferedReader;
