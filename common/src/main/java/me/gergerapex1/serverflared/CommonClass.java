@@ -1,5 +1,6 @@
 package me.gergerapex1.serverflared;
 
+import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import me.gergerapex1.serverflared.cloudflared.handler.CloudFlaredHandler;
 import me.gergerapex1.serverflared.cloudflared.handler.LocalManagedTunnel;
