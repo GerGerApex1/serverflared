@@ -24,7 +24,7 @@ public class Serverflared {
         CommonClass.init();
     }
     private static void serverStarting(ServerStartingEvent event) {
-        CommonClass.serverStarting();
+        CommonClass.handleTunnel();
     }
     private static void serverStopping(ServerStartingEvent event) {
         CommonClass.cleanup();

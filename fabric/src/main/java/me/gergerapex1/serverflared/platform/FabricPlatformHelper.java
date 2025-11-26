@@ -11,7 +11,6 @@ public class FabricPlatformHelper implements IPlatformHelper {
     public static void initialize() {
         ServerLifecycleEvents.SERVER_STARTING.register(server -> {;
             FabricPlatformHelper.server = server;
-            System.out.println("sure2");
         });
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
             FabricPlatformHelper.server = null;

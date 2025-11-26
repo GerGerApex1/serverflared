@@ -2,6 +2,7 @@ package me.gergerapex1.serverflared;
 
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
+import me.gergerapex1.serverflared.cloudflared.binaries.Download;
 import me.gergerapex1.serverflared.cloudflared.handler.CloudFlaredHandler;
 import me.gergerapex1.serverflared.cloudflared.handler.LocalManagedTunnel;
 import me.gergerapex1.serverflared.cloudflared.handler.TunnelInfo;
@@ -18,6 +19,7 @@ public class CommonClass {
     private static ConfigManager configManager;
     private static CloudFlaredHandler handler;
     private static LocalManagedTunnel localHandler;
+    private static boolean modDisabled = false;
     private static TunnelInfo info = new TunnelInfo();
     public static void init() {
         Constants.LOG.info("Initializing {}", Constants.MOD_NAME);
@@ -25,17 +27,24 @@ public class CommonClass {
         configManager = new ConfigManager();
         handler = CloudFlaredHandler.createInstance();
         localHandler = new LocalManagedTunnel(handler);
-        //Download.binary(ArchVersions.WINDOWS_AMD64.getArchiveName(), ArchVersions.WINDOWS_AMD64.getArchiveName(), Paths.get(Services.PLATFORM.getGameDirectory().toString(), "binaries").toString());
         if (configManager.firstTime) {
             logFirstTimeSetup();
+            modDisabled = true;
             return;
         }
         if (handler == null) {
             Constants.LOG.error("Failed to create CloudFlaredHandler instance, mod disabled.");
+            modDisabled = true;
             return;
         }
         if (!handler.isAuthenticated()) {
-            CompletableFuture.runAsync(() -> handler.authenticate());
+            modDisabled = true;
+            // Prevent mod from starting until authentication is done
+            CompletableFuture.runAsync(() -> handler.authenticate()).thenAccept(v -> {
+                Constants.LOG.info("Authentication completed, resuming mod operation.");
+                modDisabled = false;
+                handleTunnel();
+            });
         }
     }
     
@@ -51,13 +60,16 @@ public class CommonClass {
         Constants.LOG.info("After configuring the tunnel name, please restart the server.");
         Constants.LOG.info("Mod disabled.");
     }
-    public static void serverStarting() {
+    public static void handleTunnel() {
+        if(modDisabled) {
+            return;
+        }
         Constants.LOG.info("Handling tunnel now...");
         initiateTunnel();
         Constants.LOG.info("Starting tunnel in background...");
         CompletableFuture.runAsync(CommonClass::runTunnelBackground);
         Constants.LOG.info("Tunnel started!");
-        Constants.LOG.info("Your tunnel URL is: {}", configManager.CONFIG.getHostname());
+        //Constants.LOG.info("Your tunnel URL is: {}", configManager.CONFIG.getSubdomain());
     }
     public static void cleanup() {
         Constants.LOG.info("Stopping all processes...");
@@ -71,20 +83,33 @@ public class CommonClass {
         TunnelInfo initialTunnelInfo = new TunnelInfo();
         initialTunnelInfo.setName(configManager.CONFIG.getTunnelName());
         initialTunnelInfo.setId(configManager.CONFIG.getTunnelId());
-        if(handler.getTunnelInfo(initialTunnelInfo) == null) {
+        if(!handler.validateTunnelExist(initialTunnelInfo)) {
             Constants.LOG.info("Tunnel with name {} and ID {} not found, creating new tunnel", initialTunnelInfo.getName(), initialTunnelInfo.getId());
 
-            TunnelInfo newTunnelId = localHandler.createTunnel(initialTunnelInfo);
-            localHandler.routeDnsToTunnel(newTunnelId.getId(), configManager.CONFIG.getHostname());
-            initialTunnelInfo = newTunnelId;
+            TunnelInfo createdTunnel = localHandler.createTunnel(initialTunnelInfo);
+            if (createdTunnel == null) {
+                Constants.LOG.error("Failed to create tunnel for name {} and ID {}. Aborting tunnel initiation.", initialTunnelInfo.getName(), initialTunnelInfo.getId());
+                return;
+            }
+            localHandler.routeDnsToTunnel(createdTunnel.getId(), configManager.CONFIG.getSubdomain());
 
-            configManager.CONFIG.setTunnelId(newTunnelId.getId());
-            configManager.saveConfig();
+            updateConfigWithTunnelInfo(createdTunnel);
 
-            Constants.LOG.info("New tunnel created with ID {}", newTunnelId);
+            initialTunnelInfo = createdTunnel;
+            Constants.LOG.info("New tunnel created with ID {}", createdTunnel.getId());
         } else {
+            initialTunnelInfo = handler.getTunnelInfo(initialTunnelInfo);
             Constants.LOG.info("Tunnel with name {} and ID {} found", initialTunnelInfo.getName(), initialTunnelInfo.getId());
         }
         info = initialTunnelInfo;
+    }
+    private static void updateConfigWithTunnelInfo(TunnelInfo tunnel) {
+        configManager.CONFIG.setTunnelId(tunnel.getId());
+        configManager.CONFIG.setTunnelName(tunnel.getName());
+        configManager.saveConfig();
+    }
+
+    public static void main(String[] args) {
+        Download.binary("cloudflared", "linux", "C:\\Users\\Mischel Gealon\\Downloads\\New folder (6)\\fabric");
     }
 }

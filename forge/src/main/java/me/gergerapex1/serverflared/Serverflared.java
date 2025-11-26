@@ -19,7 +19,7 @@ public class Serverflared {
     }
     @SubscribeEvent
     public void serverStarting(ServerStartingEvent event) {
-        CommonClass.serverStarting();
+        CommonClass.handleTunnel();
     }
     @SubscribeEvent
     public void serverStopping(ServerStoppingEvent event) {

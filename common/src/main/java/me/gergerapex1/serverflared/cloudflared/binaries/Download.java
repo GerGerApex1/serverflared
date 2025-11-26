@@ -47,7 +47,7 @@ public class Download {
             .setRedirectStrategy(new LaxRedirectStrategy())
             .build();
     }
-    
+
     private static void downloadFile(CloseableHttpClient httpClient, String downloadUrl, Path outputPath) throws IOException {
         HttpGet httpGet = new HttpGet(downloadUrl);
         httpClient.execute(httpGet, classicHttpResponse -> {
@@ -55,7 +55,32 @@ public class Download {
             if (code == HTTP_OK) {
                 HttpEntity entity = classicHttpResponse.getEntity();
                 if (entity != null) {
-                    copyStreamToFile(entity.getContent(), outputPath);
+                    long contentLength = entity.getContentLength();
+                    try (InputStream in = entity.getContent();
+                        OutputStream out = Files.newOutputStream(outputPath)) {
+                        byte[] buffer = new byte[BUFFER_SIZE];
+                        int bytesRead;
+                        long totalRead = 0;
+                        int lastLoggedPercent = -1;
+                        long lastLoggedBytes = 0;
+                        while ((bytesRead = in.read(buffer)) != -1) {
+                            out.write(buffer, 0, bytesRead);
+                            totalRead += bytesRead;
+                            if (contentLength > 0) {
+                                int percent = (int) (totalRead * 100 / contentLength);
+                                if (percent != lastLoggedPercent && percent % 5 == 0) {
+                                    Constants.LOG.info("Downloading {}: {}% ({}/{})", outputPath.getFileName(), percent, totalRead, contentLength);
+                                    lastLoggedPercent = percent;
+                                }
+                            } else {
+                                // Unknown total size - log every ~1MB progress
+                                if (totalRead - lastLoggedBytes >= 1_000_000) {
+                                    Constants.LOG.info("Downloading {}: {} bytes", outputPath.getFileName(), totalRead);
+                                    lastLoggedBytes = totalRead;
+                                }
+                            }
+                        }
+                    }
                 }
                 EntityUtils.consume(entity);
             } else {

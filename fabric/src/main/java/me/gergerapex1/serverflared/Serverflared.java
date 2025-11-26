@@ -17,7 +17,7 @@ public class Serverflared implements ModInitializer {
         FabricPlatformHelper.initialize();
         CommonClass.init();
         ServerLifecycleEvents.SERVER_STARTING.register(event -> {
-            CommonClass.serverStarting();
+            CommonClass.handleTunnel();
         });
         ServerLifecycleEvents.SERVER_STOPPING.register(event -> {
             CommonClass.cleanup();

@@ -8,7 +8,7 @@ public class Config{
     private String tunnelId = new UUID(0, 0).toString();
     @Comment("The name of the Cloudflare tunnel.")
     private String tunnelName = "serverflared-tunnel";
-    @Comment("The subdomain to use from the domain. Example, \"subdomain\" for will use subdomain.yourdomain.com if you authenticated the domain yourdomain.com.")
+    @Comment("The subdomain to use from the domain. Example, \"subdomain\" for will use subdomain.yourdomain.com if you authenticated the domain yourdomain.com.\nIf you used incorrect domain, the tunnel will set subdomian.wrongdomain.com.domain.com")
     private String subdomain = "subdomain.example.com";
     
     public String getSubdomain() {
