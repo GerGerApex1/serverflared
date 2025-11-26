@@ -21,11 +21,17 @@ dependencies {
     // fabric and neoforge both bundle mixinextras, so it is safe to use it in common
     compileOnly group: 'io.github.llamalad7', name: 'mixinextras-common', version: '0.3.5'
     annotationProcessor group: 'io.github.llamalad7', name: 'mixinextras-common', version: '0.3.5'
-    api group: "fuzs.forgeconfigapiport", name: "forgeconfigapiport-common-neoforgeapi", version: "${forgeconfigapiport_version}"
+
     implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.15.2'
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
     implementation 'me.tongfei:progressbar:0.10.1'
-    //implementation 'org.yaml:snakeyaml:2.5'
+
+    testImplementation 'org.apache.httpcomponents:httpclient:4.5.14'
+    testImplementation 'org.apache.logging.log4j:log4j-api:2.20.0'
+    testImplementation 'org.apache.logging.log4j:log4j-core:2.20.0'
+    testImplementation 'org.apache.logging.log4j:log4j-slf4j-impl:2.20.0'
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.0'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.0'
 }
 configurations {
     commonJava {
@@ -43,3 +49,6 @@ artifacts {
     commonResources sourceSets.main.resources.sourceDirectories.singleFile
 }
 
+tasks.withType(Test) {
+    useJUnitPlatform()
+}
