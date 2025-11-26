@@ -1,6 +1,7 @@
 plugins {
     id 'java-library'
     id 'maven-publish'
+    id "com.gradleup.shadow"
 }
 
 base {
@@ -129,3 +130,21 @@ publishing {
         }
     }
 }
+shadowJar {
+    archiveClassifier.set("build")
+    dependencies {
+        //include(dependency('com.fasterxml.jackson.core:jackson-databind'))
+        //include(dependency('com.fasterxml.jackson.dataformat:jackson-dataformat-yaml'))
+        //include(dependency("com.fasterxml.jackson.core:jackson-core"))
+        include(dependency("com.fasterxml.jackson.*:.*"))
+        include(dependency("org.yaml.*:.*"))
+        include(dependency('me.tongfei:progressbar'))
+    }
+    relocate 'com.fasterxml', 'shadowed.com.fasterxml'
+    relocate 'me.tongfei', 'shadowed.me.tongfei'
+    relocate 'org.yaml.snakeyaml', 'shadowed.org.yaml.snakeyaml'
+}
+tasks.named('build') {
+    dependsOn tasks.named('shadowJar')
+}
+
