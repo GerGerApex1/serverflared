@@ -133,12 +133,8 @@ publishing {
 shadowJar {
     archiveClassifier.set("build")
     dependencies {
-        //include(dependency('com.fasterxml.jackson.core:jackson-databind'))
-        //include(dependency('com.fasterxml.jackson.dataformat:jackson-dataformat-yaml'))
-        //include(dependency("com.fasterxml.jackson.core:jackson-core"))
         include(dependency("com.fasterxml.jackson.*:.*"))
         include(dependency("org.yaml.*:.*"))
-        include(dependency('me.tongfei:progressbar'))
     }
     relocate 'com.fasterxml', 'shadowed.com.fasterxml'
     relocate 'me.tongfei', 'shadowed.me.tongfei'
