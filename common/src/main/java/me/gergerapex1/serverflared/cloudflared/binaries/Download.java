@@ -4,35 +4,31 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import me.gergerapex1.serverflared.Constants;
-import org.apache.http.HttpEntity;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClientBuilder;
-import org.apache.http.impl.client.LaxRedirectStrategy;
-import org.apache.http.util.EntityUtils;
 
 public class Download {
     private static final String BASE_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download/";
     private static final int BUFFER_SIZE = 8192;
     private static final int HTTP_OK = 200;
-    
+    private static final int MAX_REDIRECTS = 5;
+
     public static void binary(String archiveName, String filename, String savedDir) {
         try {
             String downloadUrl = BASE_URL + archiveName;
             Path outputPath = prepareOutputPath(savedDir, filename);
-            
-            try (CloseableHttpClient httpClient = createHttpClient()) {
-                downloadFile(httpClient, downloadUrl, outputPath);
-            }
+
+            URI uri = URI.create(downloadUrl);
+            downloadFile(uri, outputPath);
         } catch (IOException e) {
-            Constants.LOG.error("Failed to download binary: {}", e.getMessage());
+            Constants.LOG.error("Failed to download binary: {}", e.getMessage(), e);
         }
     }
-    
+
     private static Path prepareOutputPath(String savedDir, String filename) throws IOException {
         Path outputPath = Paths.get(savedDir + File.separator + filename);
         Path parent = outputPath.getParent();
@@ -41,63 +37,69 @@ public class Download {
         }
         return outputPath;
     }
-    
-    private static CloseableHttpClient createHttpClient() {
-        return HttpClientBuilder.create()
-            .setRedirectStrategy(new LaxRedirectStrategy())
-            .build();
-    }
 
-    private static void downloadFile(CloseableHttpClient httpClient, String downloadUrl, Path outputPath) throws IOException {
-        HttpGet httpGet = new HttpGet(downloadUrl);
-        httpClient.execute(httpGet, classicHttpResponse -> {
-            int code = classicHttpResponse.getStatusLine().getStatusCode();
-            if (code == HTTP_OK) {
-                HttpEntity entity = classicHttpResponse.getEntity();
-                if (entity != null) {
-                    long contentLength = entity.getContentLength();
-                    try (InputStream in = entity.getContent();
-                        OutputStream out = Files.newOutputStream(outputPath)) {
-                        byte[] buffer = new byte[BUFFER_SIZE];
-                        int bytesRead;
-                        long totalRead = 0;
-                        int lastLoggedPercent = -1;
-                        long lastLoggedBytes = 0;
-                        while ((bytesRead = in.read(buffer)) != -1) {
-                            out.write(buffer, 0, bytesRead);
-                            totalRead += bytesRead;
-                            if (contentLength > 0) {
-                                int percent = (int) (totalRead * 100 / contentLength);
-                                if (percent != lastLoggedPercent && percent % 5 == 0) {
-                                    Constants.LOG.info("Downloading {}: {}% ({}/{})", outputPath.getFileName(), percent, totalRead, contentLength);
-                                    lastLoggedPercent = percent;
-                                }
-                            } else {
-                                // Unknown total size - log every ~1MB progress
-                                if (totalRead - lastLoggedBytes >= 1_000_000) {
-                                    Constants.LOG.info("Downloading {}: {} bytes", outputPath.getFileName(), totalRead);
-                                    lastLoggedBytes = totalRead;
-                                }
-                            }
+    private static void downloadFile(URI uri, Path outputPath) throws IOException {
+        HttpURLConnection conn = openConnectionFollowRedirects(uri);
+        int code = conn.getResponseCode();
+        if (code == HTTP_OK) {
+            long contentLength = conn.getContentLengthLong();
+            try (InputStream in = conn.getInputStream();
+                 OutputStream out = Files.newOutputStream(outputPath)) {
+                byte[] buffer = new byte[BUFFER_SIZE];
+                int bytesRead;
+                long totalRead = 0;
+                int lastLoggedPercent = -1;
+                long lastLoggedBytes = 0;
+                while ((bytesRead = in.read(buffer)) != -1) {
+                    out.write(buffer, 0, bytesRead);
+                    totalRead += bytesRead;
+                    if (contentLength > 0) {
+                        int percent = (int) (totalRead * 100 / contentLength);
+                        if (percent != lastLoggedPercent && percent % 5 == 0) {
+                            Constants.LOG.info("Downloading {}: {}% ({}/{})", outputPath.getFileName(), percent, totalRead, contentLength);
+                            lastLoggedPercent = percent;
+                        }
+                    } else {
+                        // Unknown total size - log every ~1MB progress
+                        if (totalRead - lastLoggedBytes >= 1_000_000) {
+                            Constants.LOG.info("Downloading {}: {} bytes", outputPath.getFileName(), totalRead);
+                            lastLoggedBytes = totalRead;
                         }
                     }
                 }
-                EntityUtils.consume(entity);
-            } else {
-                Constants.LOG.error("Failed to download binary: HTTP {}", code);
+            } finally {
+                conn.disconnect();
             }
-            return classicHttpResponse;
-        });
-    }
-    
-    private static void copyStreamToFile(InputStream inputStream, Path outputPath) throws IOException {
-        try (InputStream in = inputStream;
-             OutputStream out = Files.newOutputStream(outputPath)) {
-            byte[] buffer = new byte[BUFFER_SIZE];
-            int bytesRead;
-            while ((bytesRead = in.read(buffer)) != -1) {
-                out.write(buffer, 0, bytesRead);
-            }
+        } else {
+            Constants.LOG.error("Failed to download binary: HTTP {}", code);
+            conn.disconnect();
         }
+    }
+
+    private static HttpURLConnection openConnectionFollowRedirects(URI uri) throws IOException {
+        URI current = uri;
+        int redirects = 0;
+        while (redirects <= MAX_REDIRECTS) {
+            HttpURLConnection conn = (HttpURLConnection) current.toURL().openConnection();
+            conn.setInstanceFollowRedirects(false);
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(15_000);
+            conn.setReadTimeout(30_000);
+            conn.connect();
+            int code = conn.getResponseCode();
+            if (code == HTTP_OK) {
+                return conn;
+            }
+            if (code == HttpURLConnection.HTTP_MOVED_PERM || code == HttpURLConnection.HTTP_MOVED_TEMP || code == HttpURLConnection.HTTP_SEE_OTHER || code == 307 || code == 308) {
+                String loc = conn.getHeaderField("Location");
+                conn.disconnect();
+                if (loc == null) throw new IOException("Redirect without Location header");
+                current = current.resolve(loc);
+                redirects++;
+                continue;
+            }
+            return conn; // return connection (non-OK and non-redirect)
+        }
+        throw new IOException("Too many redirects when trying to download: " + uri);
     }
 }
