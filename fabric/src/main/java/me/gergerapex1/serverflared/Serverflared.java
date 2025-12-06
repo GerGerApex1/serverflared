@@ -22,5 +22,8 @@ public class Serverflared implements ModInitializer {
         ServerLifecycleEvents.SERVER_STOPPING.register(event -> {
             CommonClass.cleanup();
         });
+        ServerLifecycleEvents.SERVER_STARTED.register(event -> {
+            CommonClass.postServerStart();
+        });
     }
 }

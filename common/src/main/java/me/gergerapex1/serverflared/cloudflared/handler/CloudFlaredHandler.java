@@ -9,7 +9,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -28,8 +27,8 @@ public class CloudFlaredHandler {
     private final String binaryPath;
     private final ProcessHandler processHandler;
     private static final Pattern URL_REGEX = Pattern.compile("^((https?|ftp)://|(www|ftp)\\.)?[a-z0-9-]+(\\.[a-z0-9-]+)+([/?].*)?$");
-    ///private static final Pattern TUNNEL_INFO_REGEX = Pattern.compile("^(?:NAME:\\s+([A-Za-z0-9_-]+)|ID:\\s+([0-9a-fA-F-]+)|CREATED:\\s+([\\dT:\\-Z]+))$\n");
-    private static final Pattern TUNNEL_INFO_REGEX = Pattern.compile("^(?:NAME:\\s+([A-Za-z0-9_-]+)|ID:\\s+([0-9a-fA-F-]+))$");
+    // private static final Pattern TUNNEL_INFO_REGEX = Pattern.compile("^(?:NAME:\\s+([A-Za-z0-9_-]+)|ID:\\s+([0-9a-fA-F-]+)|CREATED:\\s+([\\dT:\\-Z]+))$\n");
+    private static final Pattern TUNNEL_INFO_REGEX = Pattern.compile("^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\\s+(.+?)\\s+(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z)(?:\\s+(.*))?$");
 
     public CloudFlaredHandler(String binaryPath) {
         this.processHandler = new ProcessHandler(binaryPath);
@@ -193,14 +192,14 @@ public class CloudFlaredHandler {
     }
     public void authenticate() {
         try {
-            Process process = processHandler.executeCommandAsync(new SubCommand(Constants.CMD_TUNNEL, Constants.CMD_LOGIN));
+            Process process = processHandler.runAsync(new SubCommand(Constants.CMD_TUNNEL, Constants.CMD_LOGIN), null, null);
+            // Have it separately handle the output to catch the URL and check if authentication ends.
             Thread processThread = new Thread(() -> {
                 try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                     String line;
 
                     while ((line = reader.readLine()) != null) {
                         Matcher m = URL_REGEX.matcher(line);
-
                         if (m.matches()) {
                             Constants.LOG.info("Please authenticate cloudflared by visiting the following URL in your browser:");
                             Constants.LOG.info(m.group());
@@ -232,22 +231,18 @@ public class CloudFlaredHandler {
     }
     public boolean validateTunnelExist(String tunnelIdOrName) {
         AtomicBoolean doesExist = new AtomicBoolean(false);
+        Constants.LOG.info(tunnelIdOrName);
         try {
-            Process process = processHandler.executeCommandAsync(new SubCommand(Constants.CMD_TUNNEL, Constants.CMD_INFO, tunnelIdOrName));
-            Optional<Boolean> found = processHandler.captureProcessOutput(process, line -> {
-                Constants.LOG.info(line);
-                if (isTunnelNotFound(line)) {
-                    Constants.LOG.debug("Tunnel with ID or Name '{}' not found.", tunnelIdOrName);
-                    return Optional.of(false);
-                }
-                return Optional.of(true);
-            });
-            found.ifPresent(value -> {
-                if (value) {
+            Process process = processHandler.runAsync(new SubCommand(Constants.CMD_TUNNEL, Constants.CMD_INFO, tunnelIdOrName), output -> {
+                if (isTunnelNotFound(output)) {
+                    tunnelNotFound(tunnelIdOrName);
+                    doesExist.set(false);
+                } else {
                     doesExist.set(true);
                 }
-            });
-        } catch (IOException e) {
+            }, Constants.LOG::error);
+            process.waitFor();
+        } catch (IOException | InterruptedException e) {
             Constants.LOG.error("error", e);
         }
         return doesExist.get();
@@ -261,7 +256,7 @@ public class CloudFlaredHandler {
             if(tunnel.getId().equals(new UUID(0,0).toString())) return null;
             info = getTunnelInfo(tunnel.getId());
             if (info == null) {
-                Constants.LOG.debug("Tunnel with ID or Name '{}' not found.", tunnel.getId());
+                tunnelNotFound(tunnel.getId());
                 return null;
             }
         }
@@ -276,7 +271,7 @@ public class CloudFlaredHandler {
                 Constants.LOG.info(line);
 
                 if (isTunnelNotFound(line)) {
-                    Constants.LOG.error("Tunnel with ID or Name '{}' not found.", tunnelIdOrName);
+                   tunnelNotFound(tunnelIdOrName);;
                     return null;
                 }
                 if (matcher.find()) {
@@ -305,43 +300,67 @@ public class CloudFlaredHandler {
     }
     */
     public TunnelInfo getTunnelInfo(TunnelInfo tunnel) {
-        if(isDefaultTunnelUUID(tunnel.getId())) return null;
+        if (tunnel == null) {
+            Constants.LOG.debug("getTunnelInfo called with null tunnel");
+            return null;
+        }
+        Constants.LOG.debug("getTunnelInfo called for id={} name={}", tunnel.getId(), tunnel.getName());
         // try with name first then id
         TunnelInfo info = getTunnelInfo(tunnel.getName());
-        if(info == null) {
-            if(tunnel.getId().equals(new UUID(0,0).toString())) return null;
-            info = getTunnelInfo(tunnel.getId());
-            if (info == null) {
-                Constants.LOG.debug("Tunnel with ID or Name '{}' not found.", tunnel.getId());
+        if (info == null) {
+            Constants.LOG.debug("No tunnel found by name='{}', trying id='{}'", tunnel.getName(), tunnel.getId());
+            if (isDefaultTunnelUUID(tunnel.getId())) {
+                Constants.LOG.debug("Tunnel id equals zero UUID, returning null");
                 return null;
             }
+            info = getTunnelInfo(tunnel.getId());
+            if (info == null) {
+                tunnelNotFound(tunnel.getId());
+                Constants.LOG.debug("No tunnel found by id='{}', returning null", tunnel.getId());
+                return null;
+            }
+        } else {
+            Constants.LOG.debug("Tunnel found by name='{}'", tunnel.getName());
         }
+        Constants.LOG.debug("Returning tunnel info: {}", info);
         return info;
     }
     public TunnelInfo getTunnelInfo(String tunnelIdOrName) {
-        AtomicReference<TunnelInfo> info = new AtomicReference<>();
+        AtomicReference<TunnelInfo> info = new AtomicReference<>(null);
         try {
-            Process process = processHandler.executeCommandAsync(new SubCommand(Constants.CMD_TUNNEL, Constants.CMD_INFO, tunnelIdOrName));
-            processHandler.captureProcessOutput(process, line -> {
-                Matcher matcher = TUNNEL_INFO_REGEX.matcher(line.trim());
-
-                if (isTunnelNotFound(line)) {
-                    Constants.LOG.error("Tunnel with ID or Name '{}' not found.", tunnelIdOrName);
-                    return Optional.empty();
-                }
-                if (matcher.find()) {
-                    if (matcher.group(1) != null) {
-                        info.get().setName(matcher.group(1));
-                    } else if (matcher.group(2) != null) {
-                        info.get().setId(matcher.group(2));
+            Process process = processHandler.runAsync(
+                new SubCommand(Constants.CMD_TUNNEL, Constants.CMD_LIST),
+                line -> {
+                    Matcher matcher = TUNNEL_INFO_REGEX.matcher(line.trim());
+                    if (isTunnelNotFound(line)) {
+                        tunnelNotFound(tunnelIdOrName);
+                        info.set(null);
                     }
-                }
-                return Optional.empty();
-            });
-        } catch (IOException e) {
+                    if (matcher.find()) {
+                        if (matcher.group(1).equals(tunnelIdOrName) || matcher.group(2).equals(tunnelIdOrName)) {
+                            TunnelInfo tunnelInfo = new TunnelInfo();
+                            tunnelInfo.setId(matcher.group(1));
+                            tunnelInfo.setName(matcher.group(2));
+                            info.set(tunnelInfo);
+                        }
+                    }
+                },
+                Constants.LOG::error);
+                process.waitFor();
+        } catch (IOException | InterruptedException e) {
             Constants.LOG.error("error", e);
         }
         return info.get();
+    }
+    public void runTunnelUsingTokenBackground(String token) {
+        try {
+            processHandler.runAsync(
+                new SubCommand(Constants.CMD_TUNNEL, Constants.CMD_RUN, "--token", token),
+                null,
+                error -> Constants.LOG.error("Error running tunnel with token: {}", error));
+        } catch (IOException e) {
+            Constants.LOG.error("Failed to run tunnel in background", e);
+        }
     }
     private static boolean isTunnelNotFound(String line) {
         String lowerLine = line.toLowerCase();
@@ -353,6 +372,9 @@ public class CloudFlaredHandler {
     }
     public boolean isDefaultTunnelUUID(String tunnelUUID) {
         return tunnelUUID.equals(new UUID(0,0).toString());
+    }
+    public void tunnelNotFound(String tunnelIdOrName) {
+        Constants.LOG.debug("Tunnel with ID or Name '{}' not found", tunnelIdOrName);
     }
 }
 

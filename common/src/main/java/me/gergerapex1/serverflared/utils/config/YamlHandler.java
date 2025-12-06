@@ -7,6 +7,7 @@ import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.stream.Collectors;
+import me.gergerapex1.serverflared.Constants;
 import me.gergerapex1.serverflared.utils.config.annonations.Comment;
 
 public class YamlHandler {
@@ -41,7 +43,20 @@ public class YamlHandler {
 
             String yamlString = yamlMapper.writerWithDefaultPrettyPrinter().writeValueAsString(object);
             String yamlWithComments = insertCommentsIntoYaml(yamlString, commentsByPath);
+            Constants.LOG.info(yamlString);
             writer.write(yamlWithComments);
+        }
+    }
+    public <T> void overwriteFileWithYaml(String filePath, T object) throws IOException {
+        try (var writer = Files.newBufferedWriter(Path.of(filePath), StandardCharsets.UTF_8,
+            StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE)) {
+
+            Map<String, String> commentsByPath = new LinkedHashMap<>();
+            collectComments(object, "", commentsByPath);
+
+            String yamlString = yamlMapper.writerWithDefaultPrettyPrinter().writeValueAsString(object);
+
+            writer.write(yamlString);
         }
     }
     private static void collectComments(Object obj, String prefix, Map<String, String> out) {

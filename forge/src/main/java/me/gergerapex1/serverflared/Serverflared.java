@@ -1,5 +1,6 @@
 package me.gergerapex1.serverflared;
 
+import net.minecraftforge.event.server.ServerStartedEvent;
 import net.minecraftforge.event.server.ServerStartingEvent;
 import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -25,4 +26,6 @@ public class Serverflared {
     public void serverStopping(ServerStoppingEvent event) {
         CommonClass.cleanup();
     }
+    @SubscribeEvent
+    public void serverStarted(ServerStartedEvent event) { CommonClass.postServerStart(); }
 }

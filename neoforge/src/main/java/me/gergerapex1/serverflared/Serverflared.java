@@ -5,6 +5,7 @@ import me.gergerapex1.serverflared.platform.NeoForgePlatformHelper;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 
 @Mod(Constants.MOD_ID)
@@ -21,6 +22,7 @@ public class Serverflared {
         NeoForge.EVENT_BUS.addListener(NeoForgePlatformHelper::serverStopping);
         NeoForge.EVENT_BUS.addListener(Serverflared::serverStarting);
         NeoForge.EVENT_BUS.addListener(Serverflared::serverStopping);
+        NeoForge.EVENT_BUS.addListener(Serverflared::serverStarted);
         CommonClass.init();
     }
     private static void serverStarting(ServerStartingEvent event) {
@@ -29,4 +31,5 @@ public class Serverflared {
     private static void serverStopping(ServerStartingEvent event) {
         CommonClass.cleanup();
     }
+    private static void serverStarted(ServerStartedEvent event) { CommonClass.postServerStart(); }
 }

@@ -24,4 +24,8 @@ public class TunnelInfo {
         this.name = name;
     }
 
+    public void setTunnelAndId(TunnelInfo tunnelInfo) {
+        this.id = tunnelInfo.id;
+        this.name = tunnelInfo.name;
+    }
 }

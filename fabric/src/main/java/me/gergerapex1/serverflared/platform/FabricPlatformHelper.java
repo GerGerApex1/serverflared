@@ -39,7 +39,6 @@ public class FabricPlatformHelper implements IPlatformHelper {
 
     @Override
     public Path getConfigDirectory() {
-        System.out.println(FabricLoader.getInstance().getConfigDir());
         return FabricLoader.getInstance().getConfigDir();
     }
 

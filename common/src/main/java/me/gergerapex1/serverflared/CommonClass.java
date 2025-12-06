@@ -66,10 +66,15 @@ public class CommonClass {
         }
         Constants.LOG.info("Handling tunnel now...");
         initiateTunnel();
+    }
+    public static void postServerStart() {
+        if(modDisabled) {
+            return;
+        }
         Constants.LOG.info("Starting tunnel in background...");
+        localHandler.createTunnelConfig(info.getId(), Services.PLATFORM.getLocalAddress(), Services.PLATFORM.getServerPort());
         CompletableFuture.runAsync(CommonClass::runTunnelBackground);
         Constants.LOG.info("Tunnel started!");
-        //Constants.LOG.info("Your tunnel URL is: {}", configManager.CONFIG.getSubdomain());
     }
     public static void cleanup() {
         Constants.LOG.info("Stopping all processes...");
@@ -83,7 +88,9 @@ public class CommonClass {
         TunnelInfo initialTunnelInfo = new TunnelInfo();
         initialTunnelInfo.setName(configManager.CONFIG.getTunnelName());
         initialTunnelInfo.setId(configManager.CONFIG.getTunnelId());
-        if(!handler.validateTunnelExist(initialTunnelInfo)) {
+        boolean isTunnelExist = handler.validateTunnelExist(initialTunnelInfo);
+        Constants.LOG.info("Is tunnel exist: {}", isTunnelExist);
+        if(isTunnelExist) {
             Constants.LOG.info("Tunnel with name {} and ID {} not found, creating new tunnel", initialTunnelInfo.getName(), initialTunnelInfo.getId());
 
             TunnelInfo createdTunnel = localHandler.createTunnel(initialTunnelInfo);
@@ -98,9 +105,11 @@ public class CommonClass {
             initialTunnelInfo = createdTunnel;
             Constants.LOG.info("New tunnel created with ID {}", createdTunnel.getId());
         } else {
-            initialTunnelInfo = handler.getTunnelInfo(initialTunnelInfo);
-            Constants.LOG.info("Tunnel with name {} and ID {} found", initialTunnelInfo.getName(), initialTunnelInfo.getId());
+            TunnelInfo existingTunnel = handler.getTunnelInfo(initialTunnelInfo);
+            Constants.LOG.info("Tunnel with name {} and ID {} found", existingTunnel.getName(), existingTunnel.getId());
+            initialTunnelInfo = existingTunnel;
         }
+
         info = initialTunnelInfo;
     }
     private static void updateConfigWithTunnelInfo(TunnelInfo tunnel) {
@@ -110,6 +119,6 @@ public class CommonClass {
     }
 
     public static void main(String[] args) {
-        Download.binary("cloudflared", "linux", "C:\\Users\\Mischel Gealon\\Downloads\\New folder (6)\\fabric");
+
     }
 }

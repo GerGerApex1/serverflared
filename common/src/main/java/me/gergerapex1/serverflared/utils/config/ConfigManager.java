@@ -19,17 +19,29 @@ public class ConfigManager {
     public boolean firstTime = false;
     private final YamlHandler handler = new YamlHandler();
     public Config CONFIG;
-    
+
     public ConfigManager() {
         Path configFilePath = getConfigFilePath();
         try {
             createConfigFileIfNotExist(configFilePath);
-            CONFIG = handler.readFromYaml(configFilePath.toString(), Config.class);
+
+            try {
+                CONFIG = handler.readFromYaml(configFilePath.toString(), Config.class);
+            } catch (Exception e) {
+                Constants.LOG.warn("Failed to parse config, replacing with default: {}", e.getMessage());
+                replaceWithDefault(configFilePath);
+                return;
+            }
+
+            if (!isConfigValid(CONFIG) || isFileEmpty(configFilePath)) {
+                Constants.LOG.warn("Config is empty or contains invalid values, replacing with default");
+                replaceWithDefault(configFilePath);
+            }
         } catch (IOException e) {
             Constants.LOG.error("Failed to load config: {}", e.getMessage());
         }
     }
-    
+
     public void saveConfig() {
         Path configFilePath = getConfigFilePath();
         try {
@@ -38,12 +50,12 @@ public class ConfigManager {
             Constants.LOG.error("Failed to save config: {}", e.getMessage());
         }
     }
-    
+
     private Path getConfigFilePath() {
-        return Paths.get(Services.PLATFORM.getConfigDirectory().toString(), 
-                         Constants.CONFIG_DIR, "config.yml");
+        return Paths.get(Services.PLATFORM.getConfigDirectory().toString(),
+            Constants.CONFIG_DIR, "config.yml");
     }
-    
+
     private void createConfigFileIfNotExist(Path configFilePath) throws IOException {
         Path parent = configFilePath.getParent();
         if (parent != null) {
@@ -54,7 +66,41 @@ public class ConfigManager {
             firstTime = true;
             Config defaultConfig = new Config();
             handler.writeToYaml(configFilePath.toString(), defaultConfig);
+            CONFIG = defaultConfig;
+        }
+    }
+    private boolean isFileEmpty(Path path) {
+        try {
+            return Files.size(path) == 0;
+        } catch (IOException e) {
+            return true;
         }
     }
 
+    private void replaceWithDefault(Path configFilePath) {
+        try {
+            Config defaultConfig = new Config();
+            handler.writeToYaml(configFilePath.toString(), defaultConfig);
+            CONFIG = defaultConfig;
+            firstTime = true;
+        } catch (IOException e) {
+            Constants.LOG.error("Failed to write default config: {}", e.getMessage());
+        }
+    }
+
+    private boolean isConfigValid(Config config) {
+        if (config == null) return false;
+        try {
+            for (Field field : Config.class.getDeclaredFields()) {
+                if (java.lang.reflect.Modifier.isStatic(field.getModifiers())) continue;
+                field.setAccessible(true);
+                Object value = field.get(config);
+                if (value == null) return false;
+                if (value instanceof String && ((String) value).trim().isEmpty()) return false;
+            }
+            return true;
+        } catch (IllegalAccessException e) {
+            return false;
+        }
+    }
 }
