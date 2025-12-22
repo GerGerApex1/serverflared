@@ -1,14 +1,15 @@
 package me.gergerapex1.serverflared;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+// import org.slf4j.Logger;
+// import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 public class Constants {
 
 	public static final String MOD_ID = "serverflared";
 	public static final String MOD_FRIENDLY_NAME = "ServerFlared";
 	public static final String MOD_VERSION = /*$ mod_version*/ "1.0.0";
-	public static final Logger LOG = LoggerFactory.getLogger(MOD_FRIENDLY_NAME);
+	public static final Logger LOG = LogManager.getLogger(MOD_FRIENDLY_NAME);
 
 	// Cloudflared related constants
 	public static final String CLOUDFLARED_BINARY_NAME = "cloudflared";
