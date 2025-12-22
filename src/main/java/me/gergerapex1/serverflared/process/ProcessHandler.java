@@ -20,7 +20,7 @@ public class ProcessHandler {
     public ProcessHandler(String binaryPath) {
         this.binaryPath = binaryPath;
     }
-    
+
     public Process run(SubCommand subCommand, Consumer<String> stdout, Consumer<String> stderr) {
         try {
             Process process = createProcess(subCommand);
@@ -84,12 +84,12 @@ public class ProcessHandler {
         List<String> cmdList = subCommand.getCommandList();
         cmdList.addFirst(binaryPath);
         Constants.LOG.debug("Executing: {}", String.join(" ", cmdList));
-        
+
         ProcessBuilder processBuilder = new ProcessBuilder(cmdList);
         processBuilder.redirectErrorStream(true);
         return processBuilder.start();
     }
-    
+
     public void terminate() {
         for (Long pid : pids) {
             ProcessHandle.of(pid).ifPresent(ProcessHandle::destroy);

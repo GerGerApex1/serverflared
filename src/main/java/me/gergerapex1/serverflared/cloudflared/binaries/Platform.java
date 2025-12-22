@@ -54,10 +54,13 @@ public enum Platform {
         return UNKNOWN;
     }
     public String getFileExtension() {
-        return switch (this.os) {
-            case "windows" -> ".exe";
-            case "mac" -> ".tar.gz";
-            default -> "";
-        };
+		switch (this.os) {
+			case "windows":
+				return ".exe";
+			case "mac":
+				return ".tar.gz";
+			default:
+				return "";
+        }
     }
 }

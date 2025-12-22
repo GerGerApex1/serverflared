@@ -2,6 +2,8 @@ package me.gergerapex1.serverflared.utils.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
@@ -31,12 +33,12 @@ public class YamlHandler {
     }
 
     public <T> T readFromYaml(String filePath, Class<T> clazz) throws IOException {
-        try (var reader = Files.newBufferedReader(Path.of(filePath))) {
+        try (BufferedReader reader = Files.newBufferedReader(Path.of(filePath))) {
             return yamlMapper.readValue(reader, clazz);
         }
     }
     public <T> void writeToYaml(String filePath, T object) throws IOException {
-        try (var writer = Files.newBufferedWriter(Path.of(filePath), StandardCharsets.UTF_8)) {
+        try (BufferedWriter writer = Files.newBufferedWriter(Path.of(filePath), StandardCharsets.UTF_8)) {
 
             Map<String, String> commentsByPath = new LinkedHashMap<>();
             collectComments(object, "", commentsByPath);
@@ -48,7 +50,7 @@ public class YamlHandler {
         }
     }
     public <T> void overwriteFileWithYaml(String filePath, T object) throws IOException {
-        try (var writer = Files.newBufferedWriter(Path.of(filePath), StandardCharsets.UTF_8,
+        try (BufferedWriter writer = Files.newBufferedWriter(Path.of(filePath), StandardCharsets.UTF_8,
             StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE)) {
 
             Map<String, String> commentsByPath = new LinkedHashMap<>();
