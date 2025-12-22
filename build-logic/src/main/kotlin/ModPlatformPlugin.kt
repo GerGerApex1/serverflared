@@ -1,6 +1,5 @@
 @file:Suppress("unused", "DuplicatedCode")
 
-import dev.kikugie.fletching_table.extension.FletchingTableExtension
 import dev.kikugie.stonecutter.build.StonecutterBuildExtension
 import me.modmuss50.mpp.ModPublishExtension
 import me.modmuss50.mpp.ReleaseType
@@ -39,8 +38,7 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 
 		listOf(
 			"org.jetbrains.kotlin.jvm",
-			"com.google.devtools.ksp",
-			"dev.kikugie.fletching-table"
+			"com.google.devtools.ksp"
 		).forEach { apply(plugin = it) }
 
 		afterEvaluate {
@@ -82,7 +80,7 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 			extension.dependencies { required("java") { versionRange = ">=${extension.requiredJava.get().majorVersion}" } }
 		}
 
-		configureFletchingTable()
+		//configureFletchingTable()
 		configureJarTask(modId)
 		configureIdea()
 		configureProcessResources(isFabric, isNeoForge, isForge, modId, "$modVersion$channelTag", mcVersion, extension, extension.requiredJava.get())
@@ -223,6 +221,7 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 		}
 	}
 
+	/*
 	private fun Project.configureFletchingTable() {
 		extensions.configure<FletchingTableExtension> {
 			mixins.create("main").apply {
@@ -230,6 +229,7 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 			}
 		}
 	}
+	*/
 
 	private fun Project.registerBuildAndCollectTask(extension: ModPlatformExtensionImpl, modVersion: String) {
 		tasks.register<Copy>("buildAndCollect") {

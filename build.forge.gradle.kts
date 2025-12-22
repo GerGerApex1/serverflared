@@ -37,8 +37,6 @@ legacyForge {
 }
 
 dependencies {
-	implementation(libs.moulberry.mixinconstraints)
-	jarJar(libs.moulberry.mixinconstraints)
 	implementation(libs.jackson.dataformat.yaml)
 	implementation(libs.jackson.databind)
 

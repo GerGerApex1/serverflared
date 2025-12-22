@@ -47,8 +47,6 @@ dependencies {
 			if (hasProperty("deps.parchment")) parchment("org.parchmentmc.data:parchment-${prop("deps.parchment")}@zip")
 		})
 	modImplementation(libs.fabric.loader)
-	implementation(libs.moulberry.mixinconstraints)
-	include(libs.moulberry.mixinconstraints)
 	modImplementation("net.fabricmc.fabric-api:fabric-api:${prop("deps.fabric-api")}")
 	implementation(libs.jackson.dataformat.yaml)
 	implementation(libs.jackson.databind)

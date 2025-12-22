@@ -32,5 +32,5 @@ jsonlang-postprocess = { id = "dev.kikugie.postprocess.jsonlang", version.ref = 
 mod-publish-plugin = { id = "me.modmuss50.mod-publish-plugin", version.ref = "mod-publish" }
 devtools-ksp = { id = "com.google.devtools.ksp", version.ref = "devtools-ksp" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin-jvm" }
-fletching-table = { id = "dev.kikugie.fletching-table", version.ref = "fletching-table" }
+#fletching-table = { id = "dev.kikugie.fletching-table", version.ref = "fletching-table" }
 legacyforge-moddev = { id = "net.neoforged.moddev.legacyforge", version.ref = "neoforge-moddev" }

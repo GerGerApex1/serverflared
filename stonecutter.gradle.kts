@@ -7,7 +7,7 @@ plugins {
 	alias(libs.plugins.mod.publish.plugin).apply(false)
 	alias(libs.plugins.kotlin.jvm).apply(false)
 	alias(libs.plugins.devtools.ksp).apply(false)
-	alias(libs.plugins.fletching.table).apply(false)
+	//alias(libs.plugins.fletching.table).apply(false)
 	alias(libs.plugins.legacyforge.moddev).apply(false)
 }
 
