@@ -48,22 +48,22 @@ stonecutter {
 		fun createVersionDirectory(mcVersionList: List<String>, loaderList: List<String>) {
 			for (mcVersion in mcVersionList) {
 				for (loader in loaderList) {
-					val minorVersion = mcVersion.split(".")[1].toInt()
-					// we dont support fabric versions <= 1.16.5
-					if(minorVersion < 16 && loader == "fabric") continue
-					// we dont support neoforge versions <= 1.19.x
-					if(minorVersion < 20 && loader == "neoforge") continue
-					// if minor version is 16 and below use legacy forge
-					if(loader == "forge") {
-						version("$mcVersion-$loader", mcVersion).buildscript = "build.legacyforge.gradle.kts"
-						continue
-					}
+					val minorVersion = mcVersion.split(".").getOrNull(1)?.toIntOrNull()?: continue
+					if (!isSupported(minorVersion, loader)) continue
 
 					version("$mcVersion-$loader", mcVersion).buildscript = "build.$loader.gradle.kts"
 				}
 			}
 		}
+
 		createVersionDirectory(minecraftVersions, loaders)
 		vcsVersion = "1.21.1-fabric"
+	}
+}
+fun isSupported(minorVersion: Int, loader: String): Boolean {
+	return when (loader) {
+		"fabric"   -> minorVersion >= 16
+		"neoforge" -> minorVersion >= 20
+		else       -> true
 	}
 }
