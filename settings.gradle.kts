@@ -54,7 +54,7 @@ stonecutter {
 					// we dont support neoforge versions <= 1.19.x
 					if(minorVersion < 20 && loader == "neoforge") continue
 					// if minor version is 16 and below use legacy forge
-					if(minorVersion <= 16 && loader == "forge") {
+					if(loader == "forge") {
 						version("$mcVersion-$loader", mcVersion).buildscript = "build.legacyforge.gradle.kts"
 						continue
 					}
