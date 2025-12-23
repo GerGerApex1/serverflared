@@ -1,6 +1,6 @@
 plugins {
 	id("mod-platform")
-	id("fabric-loom")
+	id("gg.essential.loom")
 }
 
 platform {
