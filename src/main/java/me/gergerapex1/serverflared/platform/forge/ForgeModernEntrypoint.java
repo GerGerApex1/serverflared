@@ -1,6 +1,6 @@
 package me.gergerapex1.serverflared.platform.forge;
 
-//? if forge && (minecraft: >= 1.13)  {
+//? if forge && !legacy_forge  {
 
 /*
 import me.gergerapex1.serverflared.Constants;

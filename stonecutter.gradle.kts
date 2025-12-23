@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.utils.property
+
 plugins {
 	alias(libs.plugins.stonecutter)
 	alias(libs.plugins.dotenv)
@@ -40,5 +42,8 @@ stonecutter parameters {
 	swaps["mod_name"] = "\"" + property("mod.name") + "\";"
 	swaps["mod_group"] = "\"" + property("mod.group") + "\";"
 	swaps["minecraft"] = "\"" + node.metadata.version + "\";"
+
+	val isLegacyForge = node.metadata.version <= "1.12"
+	constants["legacy_forge"] = isLegacyForge
 	constants["release"] = property("mod.id") != "modtemplate"
 }

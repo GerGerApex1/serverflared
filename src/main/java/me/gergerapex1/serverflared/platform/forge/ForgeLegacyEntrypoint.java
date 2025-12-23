@@ -2,7 +2,7 @@ package me.gergerapex1.serverflared.platform.forge;
 
 
 
-//? if forge && (minecraft: <= 1.12) {
+//? if forge && legacy_forge {
 /*
 import me.gergerapex1.serverflared.ModPlatformInstance;
 import net.minecraftforge.fml.common.event.FMLServerStartedEvent;
