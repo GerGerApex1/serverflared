@@ -1,32 +1,33 @@
 package me.gergerapex1.serverflared.platform.forge;
 
 //? if forge && !legacy_forge  {
-
-/*
-import net.minecraftforge.event.server.ServerStartedEvent;
-import net.minecraftforge.event.server.ServerStartingEvent;
-import net.minecraftforge.event.server.ServerStoppingEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
+/*import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.fml.common.Mod.EventHandler;
+import net.minecraftforge.fml.common.event.FMLInitializationEvent;
+import net.minecraftforge.fml.common.event.FMLServerStartedEvent;
+import net.minecraftforge.fml.common.event.FMLServerStartingEvent;
+import net.minecraftforge.fml.common.event.FMLServerStoppingEvent;
 import net.minecraftforge.fml.common.Mod;
 import me.gergerapex1.serverflared.Constants;
 import me.gergerapex1.serverflared.ModPlatformInstance;
 import me.gergerapex1.serverflared.ServerFlared;
 
-@Mod(Constants.MOD_ID)
+@Mod(modid = Constants.MOD_ID)
 public class ForgeModernEntrypoint {
-
-	public ForgeModernEntrypoint() {
+	public void init(FMLInitializationEvent event) {
 		ModPlatformInstance.onInitialize();
+		MinecraftForge.EVENT_BUS.register(this);
+		MinecraftForge.EVENT_BUS.register(ForgeModernPlatform.class);
 	}
-	@SubscribeEvent
-    public void serverStarting(ServerStartingEvent event) {
+	@EventHandler
+    public void serverStarting(FMLServerStartingEvent event) {
         ServerFlared.handleTunnel();
     }
-    @SubscribeEvent
-    public void serverStopping(ServerStoppingEvent event) {
+    @EventHandler
+    public void serverStopping(FMLServerStoppingEvent event) {
         ServerFlared.cleanup();
     }
-    @SubscribeEvent
-    public void serverStarted(ServerStartedEvent event) { ServerFlared.postServerStart(); }
+    @EventHandler
+    public void serverStarted(FMLServerStartedEvent event) { ServerFlared.postServerStart(); }
 }
 *///?}
