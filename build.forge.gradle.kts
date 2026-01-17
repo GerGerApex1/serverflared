@@ -1,6 +1,5 @@
 import org.gradle.kotlin.dsl.register
 
-ext["loom.platform"] = "forge"
 plugins {
 	id("mod-platform")
 	id("gg.essential.loom")
@@ -22,7 +21,6 @@ platform {
 dependencies {
 	minecraft("com.mojang:minecraft:${prop("deps.minecraft")}")
 	forge("net.minecraftforge:forge:${property("deps.minecraft")}-${property("deps.forge")}")
-	// special handling for 16 i guess
 	println(minorVersion)
 	if (14 <= minorVersion) {
 		mappings(loom.officialMojangMappings())
@@ -33,9 +31,19 @@ dependencies {
 	implementation(libs.jackson.databind)
 }
 loom {
-	runConfigs {
-		remove(getByName("client"))
+	runs {
+		runs.named("server") {
+			server()
+			ideConfigGenerated(true)
+			runDir = "run/"
+			environment = "server"
+			configName = "Forge Server (${prop("deps.minecraft")})"
+		}
+		runs.named("client") {
+			ideConfigGenerated(false)
+		}
 	}
+	runConfigs {
 	forge {
 		pack200Provider.set(dev.architectury.pack200.java.Pack200Adapter())
 	}
@@ -72,9 +80,5 @@ repositories {
 			//includeGroup("de.oceanlabs.mcp") // only dependencies from this group
 		}
 	}
-}
-sourceSets {
-	main {
-	}
-}
+}}
 

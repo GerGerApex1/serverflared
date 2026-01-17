@@ -1,6 +1,8 @@
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+
 plugins {
 	id("mod-platform")
-	id("net.neoforged.moddev")
+	id("gg.essential.loom")
 }
 
 platform {
@@ -15,20 +17,26 @@ platform {
 	}
 }
 
-neoForge {
-	version = property("deps.neoforge") as String
+dependencies {
+	minecraft("com.mojang:minecraft:${prop("deps.minecraft")}")
+	neoForge("net.neoforged:neoforge:${property("deps.neoforge")}")
 
-	if (hasProperty("deps.parchment")) parchment {
-		val (mc, ver) = (property("deps.parchment") as String).split(':')
-		mappingsVersion = ver
-		minecraftVersion = mc
-	}
+	mappings(loom.officialMojangMappings())
+	implementation(libs.jackson.dataformat.yaml)
+	implementation(libs.jackson.databind)
+}
 
+loom {
 	runs {
-		register("server") {
+		runs.named("server") {
 			server()
-			gameDirectory = file("run/")
-			ideName = "NeoForge Server (${stonecutter.active?.version})"
+			ideConfigGenerated(true)
+			runDir = "run/"
+			environment = "server"
+			configName = "NeoForge Server (${prop("deps.minecraft")})"
+		}
+		runs.named("client") {
+			ideConfigGenerated(false)
 		}
 	}
 
@@ -37,14 +45,19 @@ neoForge {
 			sourceSet(sourceSets["main"])
 		}
 	}
-}
-
-dependencies {
-	implementation(libs.jackson.dataformat.yaml)
-	implementation(libs.jackson.databind)
 
 }
-
-tasks.named("createMinecraftArtifacts") {
-	dependsOn(tasks.named("stonecutterGenerate"))
+val shadowBundle: Configuration by configurations.creating {
+	isCanBeConsumed = false
+	isCanBeResolved = true
+}
+tasks.withType<ShadowJar> {
+	configurations = listOf(shadowBundle)
+	archiveClassifier.set("shadowed")
+}
+repositories {
+	maven {
+		name = "NeoForged"
+		url = uri("https://maven.neoforged.net/releases")
+	}
 }

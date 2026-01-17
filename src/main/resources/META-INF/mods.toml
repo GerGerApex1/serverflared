@@ -16,6 +16,4 @@ credits = "${contributors}"
 
 description = '''${description}'''
 
-[[mixins]]
-config = "${id}.mixins.json"
 ${dependencies}

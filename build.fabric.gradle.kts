@@ -7,14 +7,16 @@ platform {
 	loader = "fabric"
 	dependencies {
 		required("minecraft") {
-			versionRange = prop("deps.minecraft")
+			versionRange = ">=${prop("deps.minecraft")}"
 		}
+		/*
 		required("fabric-api") {
 			slug("fabric-api")
 			versionRange = ">=${prop("deps.fabric-api")}"
 		}
+		*/
 		required("fabricloader") {
-			versionRange = ">=${libs.fabric.loader.get().version}"
+			versionRange = ">=0.12.0"
 		}
 		optional("modmenu") {}
 	}
@@ -35,10 +37,10 @@ loom {
 		ideConfigGenerated(true)
 		runDir = "run/"
 		environment = "server"
-		configName = "Fabric Serve r"
+		configName = "Fabric Server (${prop("deps.minecraft")})"
 	}
 }
-
+tasks.withType()
 dependencies {
 	minecraft("com.mojang:minecraft:${prop("deps.minecraft")}")
 	mappings(

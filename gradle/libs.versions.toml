@@ -3,7 +3,7 @@ stonecutter = "0.8-beta.3"
 stonecutter-postprocess = "2.1-beta.8"
 mod-publish = "1.1.0"
 dotenv-gradle = "4.0.0"
-fabric-loom = "1.11.38"
+fabric-loom = "1.13.44"
 neoforge-moddev = "2.0.134"
 foojay = "1.0.0"
 fabric-loader = "0.17.3"
@@ -12,6 +12,7 @@ kotlin-jvm = "2.2.10"
 fletching-table = "0.1.0-alpha.22"
 moulberry-mixinconstraints = "1.1.0"
 jackson = "2.15.2"
+shadow = "8.3.0"
 [libraries]
 kikugie-postprocess = { module = "dev.kikugie:postprocess", version.ref = "stonecutter-postprocess" }
 mod-publish-plugin = { module = "me.modmuss50:mod-publish-plugin", version.ref = "mod-publish" }
@@ -34,3 +35,4 @@ devtools-ksp = { id = "com.google.devtools.ksp", version.ref = "devtools-ksp" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin-jvm" }
 #fletching-table = { id = "dev.kikugie.fletching-table", version.ref = "fletching-table" }
 legacyforge-moddev = { id = "net.neoforged.moddev.legacyforge", version.ref = "neoforge-moddev" }
+gradleup-shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }

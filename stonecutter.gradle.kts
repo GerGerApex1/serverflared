@@ -11,6 +11,7 @@ plugins {
 	alias(libs.plugins.devtools.ksp).apply(false)
 	//alias(libs.plugins.fletching.table).apply(false)
 	alias(libs.plugins.legacyforge.moddev).apply(false)
+	alias(libs.plugins.gradleup.shadow).apply(false)
 }
 
 stonecutter active file(".sc_active_version")
@@ -42,8 +43,13 @@ stonecutter parameters {
 	swaps["mod_name"] = "\"" + property("mod.name") + "\";"
 	swaps["mod_group"] = "\"" + property("mod.group") + "\";"
 	swaps["minecraft"] = "\"" + node.metadata.version + "\";"
+	val minorVersion = node.metadata.version
+		.split(".")
+		.getOrNull(1)
+		?.toIntOrNull()
 
-	val isLegacyForge = node.metadata.version <= "1.12"
+	val isLegacyForge = minorVersion?.let { it <= 12 } ?: false
+	println("minecraft version: ${node.metadata.version}, islegacy:${isLegacyForge}")
 	constants["legacy_forge"] = isLegacyForge
 	constants["release"] = property("mod.id") != "modtemplate"
 }

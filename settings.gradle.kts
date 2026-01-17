@@ -26,7 +26,7 @@ plugins {
 	id("dev.kikugie.stonecutter") version "0.8-beta.3"
 }
 
-val loaders = listOf("fabric", "neoforge", "forge",)
+val loaders = listOf("fabric" , "forge", "neoforge")
 val minecraftVersions = listOf(
 	"1.8.9",
 	"1.9",
@@ -35,11 +35,11 @@ val minecraftVersions = listOf(
 	"1.12.2",
 	//
 	//"1.14.4",
-	"1.15.2",
+	//"1.15.2",
 	"1.16.5",
 	"1.18.2",
 	"1.19.2",
-	"1.20.4",
+	"1.20.2",
 	"1.21.1",
 )
 
