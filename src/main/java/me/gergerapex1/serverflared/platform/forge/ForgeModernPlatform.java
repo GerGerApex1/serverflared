@@ -1,6 +1,6 @@
 package me.gergerapex1.serverflared.platform.forge;
 
-//? forge {
+//? forge && !legacy_forge {
 
 /*import me.gergerapex1.serverflared.platform.Platform;
 import net.minecraftforge.fml.ModList;
@@ -15,7 +15,7 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.Mod.EventBusSubscriber.Bus;
 import net.minecraftforge.fml.loading.FMLLoader;
 
-public class ForgePlatform implements Platform {
+public class ForgeModernPlatform implements Platform {
 
 	@Override
 	public boolean isModLoaded(String modId) {
@@ -33,11 +33,6 @@ public class ForgePlatform implements Platform {
     }
 
     @Override
-    public boolean isModLoaded(String modId) {
-        return ModList.get().isLoaded(modId);
-    }
-
-    @Override
     public boolean isDevelopmentEnvironment() {
         return !FMLLoader.isProduction();
     }
@@ -46,10 +41,14 @@ public class ForgePlatform implements Platform {
     public Path getGameDirectory() {
         return server.getServerDirectory();
     }
+	@Override
+    public ModLoader getPlatformName() {
+        return ModLoader.FORGE;
+    }
 
     @Override
     public Path getConfigDirectory() {
-        return server.getServerDirectory().resolve("config");
+        return server.getServerDirectory().toPath().resolve("config");
     }
 
     @Override

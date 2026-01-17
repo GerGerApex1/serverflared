@@ -27,6 +27,11 @@ public class FabricPlatform implements Platform {
 	}
 
 	@Override
+	public ModLoader getPlatformName() {
+		return ModLoader.FABRIC;
+	}
+
+	@Override
 	public boolean isDevelopmentEnvironment() {
 		return FabricLoader.getInstance().isDevelopmentEnvironment();
 	}

@@ -6,9 +6,9 @@ import me.gergerapex1.serverflared.platform.fabric.FabricPlatform;
 //?} neoforge {
 /*import me.gergerapex1.serverflared.platform.neoforge.NeoforgePlatform;
  *///?} forge && (minecraft: >= 1.13) {
-/*import me.gergerapex1.serverflared.platform.forge.ForgeModernEntrypoint;
+/*import me.gergerapex1.serverflared.platform.forge.ForgeModernPlatform;
  *///?} forge && (minecraft: <= 1.12) {
- /*import me.gergerapex1.serverflared.platform.forge.ForgeLegacyEntrypoint;
+ /*import me.gergerapex1.serverflared.platform.forge.ForgeLegacyPlatform;
   *///?}
 
 @SuppressWarnings("LoggingSimilarMessage")
@@ -30,9 +30,9 @@ public class ModPlatformInstance {
 		//?} neoforge {
 		/*return new NeoforgePlatform();
 		 *///?} forge && !legacy_forge {
-		/*return new ForgeModernEntrypoint();
+		/*return new ForgeModernPlatform();
 		 *///?} forge && legacy_forge {
-		 /*return new ForgeLegacyEntrypoint();
+		 /*return new ForgeLegacyPlatform();
 		  *///?}
 	}
 }

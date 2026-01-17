@@ -31,6 +31,7 @@ public interface Platform {
 	Path getConfigDirectory();
 	int getServerPort();
 	String getLocalAddress();
+	ModLoader getPlatformName();
 
 	enum ModLoader {
 		FABRIC, NEOFORGE, FORGE, QUILT
