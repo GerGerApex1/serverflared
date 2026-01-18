@@ -5,9 +5,9 @@ import me.gergerapex1.serverflared.platform.Platform;
 import me.gergerapex1.serverflared.platform.fabric.FabricPlatform;
 //?} neoforge {
 /*import me.gergerapex1.serverflared.platform.neoforge.NeoforgePlatform;
- *///?} forge && (minecraft: >= 1.13) {
+ *///?} forge && !legacy_forge {
 /*import me.gergerapex1.serverflared.platform.forge.ForgeModernPlatform;
- *///?} forge && (minecraft: <= 1.12) {
+ *///?} forge && legacy_forge {
  /*import me.gergerapex1.serverflared.platform.forge.ForgeLegacyPlatform;
   *///?}
 
