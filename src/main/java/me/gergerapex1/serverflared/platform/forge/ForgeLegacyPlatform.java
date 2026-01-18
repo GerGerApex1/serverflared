@@ -48,11 +48,15 @@ public class ForgeLegacyPlatform implements Platform {
 
     @Override
     public int getServerPort() {
-        return server.getPort();
+    	// see stonecutter.gradle.kts
+    	//$ mc_1_10_2_port
+    	return server.getPort();
     }
 
     @Override
     public String getLocalAddress() {
+    	// see stonecutter.gradle.kts
+    	//$ mc_1_10_2_hostname
         return server.getHostname();
     }
 }

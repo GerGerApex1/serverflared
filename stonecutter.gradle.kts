@@ -52,4 +52,14 @@ stonecutter parameters {
 	println("minecraft version: ${node.metadata.version}, islegacy:${isLegacyForge}")
 	constants["legacy_forge"] = isLegacyForge
 	constants["release"] = property("mod.id") != "modtemplate"
+
+	// 1.10.2 swap
+	swaps["mc_1_10_2_port"] = when {
+		current.parsed < "1.10" -> "return server.getPort();"
+		else -> "return server.getServerPort();"
+	}
+	swaps["mc_1_10_2_hostname"] = when {
+		current.parsed < "1.10" -> "return server.getHostname();"
+		else -> "return server.getServerHostname();"
+	}
 }
