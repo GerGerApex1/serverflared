@@ -2,13 +2,13 @@ package me.gergerapex1.serverflared.platform.forge;
 
 //? forge && legacy_forge {
 /*import me.gergerapex1.serverflared.platform.Platform;
+import me.gergerapex1.serverflared.utils.ClassHelpers;
 import net.minecraftforge.fml.common.Loader;
 import net.minecraftforge.fml.common.Mod.EventHandler;
 import net.minecraftforge.fml.common.event.FMLServerStartingEvent;
 import net.minecraftforge.fml.common.event.FMLServerStoppingEvent;
 import net.minecraft.server.MinecraftServer;
 import java.nio.file.Path;
-
 
 public class ForgeLegacyPlatform implements Platform {
 
@@ -43,21 +43,17 @@ public class ForgeLegacyPlatform implements Platform {
 
     @Override
     public Path getConfigDirectory() {
-        return server.getDataDirectory().toPath().resolve("config");
+        return getGameDirectory().resolve("config");
     }
 
     @Override
     public int getServerPort() {
-    	// see stonecutter.gradle.kts
-    	//$ mc_1_10_2_port
-    	return server.getPort();
+    	return ClassHelpers.normalizeToServerPort(server);
     }
 
     @Override
     public String getLocalAddress() {
-    	// see stonecutter.gradle.kts
-    	//$ mc_1_10_2_hostname
-        return server.getHostname();
+		return ClassHelpers.normalizeToHostname( server);
     }
 }
 *///?}

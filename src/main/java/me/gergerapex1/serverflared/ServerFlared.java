@@ -62,7 +62,7 @@ public class ServerFlared {
         Constants.LOG.info("Handling tunnel now...");
         initiateTunnel();
     }
-    public static void postServerStart() {
+    public static void startedServer() {
         if(modDisabled) {
             return;
         }

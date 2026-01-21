@@ -15,7 +15,7 @@ public class FabricEntrypoint implements ModInitializer {
 		FabricPlatform.initialize();
 		ServerLifecycleEvents.SERVER_STARTING.register(event -> ServerFlared.handleTunnel());
 		ServerLifecycleEvents.SERVER_STOPPING.register(event -> ServerFlared.cleanup());
-		ServerLifecycleEvents.SERVER_STARTED.register(event -> ServerFlared.postServerStart());
+		ServerLifecycleEvents.SERVER_STARTED.register(event -> ServerFlared.startedServer());
 	}
 }
 //?}

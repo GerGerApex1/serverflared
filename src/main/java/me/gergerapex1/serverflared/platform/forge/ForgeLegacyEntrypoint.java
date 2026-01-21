@@ -1,3 +1,4 @@
+
 package me.gergerapex1.serverflared.platform.forge;
 
 //? if forge && legacy_forge {
@@ -29,7 +30,7 @@ public class ForgeLegacyEntrypoint {
 	}
 	@EventHandler
 	public void serverStarted(FMLServerStartedEvent event) {
-		ServerFlared.postServerStart();
+		ServerFlared.startedServer();
 	}
 
 }

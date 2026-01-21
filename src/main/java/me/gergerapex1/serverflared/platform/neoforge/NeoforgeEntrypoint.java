@@ -27,6 +27,6 @@ public class NeoforgeEntrypoint {
     private static void serverStopping(ServerStartingEvent event) {
         ServerFlared.cleanup();
     }
-    private static void serverStarted(ServerStartedEvent event) { ServerFlared.postServerStart(); }
+    private static void serverStarted(ServerStartedEvent event) { ServerFlared.startedServer(); }
 }
 *///?}

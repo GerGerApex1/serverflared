@@ -49,7 +49,6 @@ stonecutter parameters {
 		?.toIntOrNull()
 
 	val isLegacyForge = minorVersion?.let { it <= 12 } ?: false
-	println("minecraft version: ${node.metadata.version}, islegacy:${isLegacyForge}")
 	constants["legacy_forge"] = isLegacyForge
 	constants["release"] = property("mod.id") != "modtemplate"
 
@@ -61,5 +60,13 @@ stonecutter parameters {
 	swaps["mc_1_10_2_hostname"] = when {
 		current.parsed < "1.10" -> "return server.getHostname();"
 		else -> "return server.getServerHostname();"
+	}
+	//println(current.parsed >= "1.18")
+	replacements.string("forge_imports_modern", current.parsed >= "1.18") {
+		replace("net.minecraftforge.fml.event.server", "net.minecraftforge.event.server")
+		replace("FMLServerStartedEvent", "ServerStartedEvent")
+		replace("FMLServerStartingEvent", "ServerStartingEvent")
+		replace("FMLServerStoppingEvent", "ServerStoppingEvent")
+		// remove FML from event names
 	}
 }

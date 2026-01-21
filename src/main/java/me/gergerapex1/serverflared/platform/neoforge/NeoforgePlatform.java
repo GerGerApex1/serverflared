@@ -2,6 +2,7 @@ package me.gergerapex1.serverflared.platform.neoforge;
 
 //? neoforge {
 /*import me.gergerapex1.serverflared.platform.Platform;
+import me.gergerapex1.serverflared.utils.ClassHelpers;
 import java.nio.file.Path;
 import me.gergerapex1.serverflared.Constants;
 import net.minecraft.server.MinecraftServer;
@@ -37,12 +38,12 @@ public class NeoforgePlatform implements Platform {
 
     @Override
     public Path getGameDirectory() {
-        return server.getServerDirectory();
+        return ClassHelpers.normalizeToPath(server.getServerDirectory());
     }
 
     @Override
     public Path getConfigDirectory() {
-        return server.getServerDirectory().resolve("config");
+        return getGameDirectory().resolve("config");
     }
 
     @Override
