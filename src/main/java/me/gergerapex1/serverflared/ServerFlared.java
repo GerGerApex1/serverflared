@@ -49,7 +49,7 @@ public class ServerFlared {
             .resolve("config.yml");
 
         Constants.LOG.info("First time setup detected, please configure the TUNNEL NAME (\"tunnelName\") "
-            + "and HOSTNAME (\"hostname\") in the config file generated at {}", configPath.toString());
+            + "and SUBDOMAIN (\"subdomain\") in the config file generated at {}", configPath.toString());
         Constants.LOG.info("If you have existing cloudflared tunnel or remotely managed tunnel, please configure the TUNNEL ID "
             + "(\"tunnelID\") instead");
         Constants.LOG.info("After configuring the tunnel name, please restart the server.");
@@ -59,17 +59,17 @@ public class ServerFlared {
         if(modDisabled) {
             return;
         }
-        Constants.LOG.info("Handling tunnel now...");
+        Constants.LOG.debug("Handling tunnel now...");
         initiateTunnel();
     }
     public static void startedServer() {
         if(modDisabled) {
             return;
         }
-        Constants.LOG.info("Starting tunnel in background...");
+        Constants.LOG.debug("Starting tunnel in background...");
         localHandler.createTunnelConfig(info.getId(), ModPlatformInstance.xplat().getLocalAddress(), ModPlatformInstance.xplat().getServerPort());
         CompletableFuture.runAsync(ServerFlared::runTunnelBackground);
-        Constants.LOG.info("Tunnel started!");
+        Constants.LOG.debug("Tunnel started!");
     }
     public static void cleanup() {
         Constants.LOG.info("Stopping all processes...");
@@ -84,9 +84,9 @@ public class ServerFlared {
         initialTunnelInfo.setName(configManager.CONFIG.getTunnelName());
         initialTunnelInfo.setId(configManager.CONFIG.getTunnelId());
         boolean isTunnelExist = handler.validateTunnelExist(initialTunnelInfo);
-        Constants.LOG.info("Is tunnel exist: {}", isTunnelExist);
+        Constants.LOG.debug("Is tunnel exist: {}", isTunnelExist);
         if(isTunnelExist) {
-            Constants.LOG.info("Tunnel with name {} and ID {} not found, creating new tunnel", initialTunnelInfo.getName(), initialTunnelInfo.getId());
+            Constants.LOG.debug("Tunnel with name {} and ID {} not found, creating new tunnel", initialTunnelInfo.getName(), initialTunnelInfo.getId());
 
             TunnelInfo createdTunnel = localHandler.createTunnel(initialTunnelInfo);
             if (createdTunnel == null) {
@@ -111,9 +111,5 @@ public class ServerFlared {
         configManager.CONFIG.setTunnelId(tunnel.getId());
         configManager.CONFIG.setTunnelName(tunnel.getName());
         configManager.saveConfig();
-    }
-
-    public static void main(String[] args) {
-
     }
 }
