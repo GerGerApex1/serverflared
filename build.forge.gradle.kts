@@ -27,8 +27,14 @@ dependencies {
 	} else {
 		mappings("de.oceanlabs.mcp:mcp_snapshot:${prop("deps.mcp")}@zip")
 	}
+	include(libs.jackson.dataformat.yaml)
+	include(libs.jackson.databind)
+	include(libs.jackson.annotations)
+	include(libs.snakeyaml)
 	implementation(libs.jackson.dataformat.yaml)
 	implementation(libs.jackson.databind)
+	implementation(libs.jackson.annotations)
+	implementation(libs.snakeyaml)
 }
 loom {
 	runs {

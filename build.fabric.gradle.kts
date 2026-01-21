@@ -18,7 +18,6 @@ platform {
 		required("fabricloader") {
 			versionRange = ">=0.12.0"
 		}
-		optional("modmenu") {}
 	}
 }
 
@@ -40,7 +39,6 @@ loom {
 		configName = "Fabric Server (${prop("deps.minecraft")})"
 	}
 }
-tasks.withType()
 dependencies {
 	minecraft("com.mojang:minecraft:${prop("deps.minecraft")}")
 	mappings(
@@ -50,7 +48,13 @@ dependencies {
 		})
 	modImplementation(libs.fabric.loader)
 	modImplementation("net.fabricmc.fabric-api:fabric-api:${prop("deps.fabric-api")}")
+	include(libs.jackson.dataformat.yaml)
+	include(libs.jackson.databind)
+	include(libs.jackson.annotations)
+	include(libs.snakeyaml)
 	implementation(libs.jackson.dataformat.yaml)
 	implementation(libs.jackson.databind)
+	implementation(libs.jackson.annotations)
+	implementation(libs.snakeyaml)
 	//modLocalRuntime("com.terraformersmc:modmenu:${prop("deps.modmenu")}")
 }
