@@ -10,7 +10,7 @@ permissions:
 
 env:
   MODRINTH_API_TOKEN: ${{ secrets.MODRINTH_API_TOKEN }}
-  CURSEFORGE_API_TOKEN: ${{ secrets.CURSEFORGE_API_TOKEN }}
+  # TODO: Add curseforge page
   TEST_PUBLISHING_WITH_MR_STAGING: ${{ vars.TEST_PUBLISHING_WITH_MR_STAGING }}
   ENABLE_PUBLISHING: ${{ vars.ENABLE_PUBLISHING }}
 
@@ -187,7 +187,8 @@ jobs:
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
-
+        ## TODO: Add curseforge page
       - name: Publish to Platforms
         run: |
+           
           ./gradlew publishMods --stacktrace
