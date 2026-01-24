@@ -187,8 +187,8 @@ jobs:
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
-        ## TODO: Add curseforge page
+      # TODO: Add curseforge page
       - name: Publish to Platforms
         run: |
-           
+
           ./gradlew publishMods --stacktrace
