@@ -41,11 +41,9 @@ body = """
         {% endif -%}
     {% endfor -%}
 {% endfor %}\n
-
-{% set contributors = commits | map(attribute="author.name") | unique | sort %}
-{% endfor %}
 """
 
+## {% set contributors = commits | map(attribute="author.name") | unique | sort %}
 ## ## Contributors
 ## {% for c in contributors %}
 ## 	- {{ c }}
