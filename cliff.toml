@@ -43,11 +43,12 @@ body = """
 {% endfor %}\n
 
 {% set contributors = commits | map(attribute="author.name") | unique | sort %}
-## Contributors
-{% for c in contributors %}
-- {{ c }}
 {% endfor %}
 """
+
+## ## Contributors
+## {% for c in contributors %}
+## 	- {{ c }}
 # A Tera template to be rendered as the changelog's footer.
 # See https://keats.github.io/tera/docs/#introduction
 footer = """
