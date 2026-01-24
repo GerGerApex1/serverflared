@@ -115,7 +115,7 @@ jobs:
 
       - name: Create or update GitHub release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           TAG="${GITHUB_REF_NAME}"
           echo "Creating or updating release for $TAG"
