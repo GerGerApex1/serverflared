@@ -21,7 +21,7 @@ public class Download {
         try {
             String downloadUrl = BASE_URL + archiveName;
             Path outputPath = prepareOutputPath(savedDir, filename);
-
+			Constants.LOG.info("Downloading binary from {} to {}", downloadUrl, outputPath);
             URI uri = URI.create(downloadUrl);
             downloadFile(uri, outputPath);
         } catch (IOException e) {
