@@ -32,6 +32,7 @@ val minecraftVersions = listOf(
 	"1.9",
 	"1.10",
 	"1.11",
+	"1.12",
 	// temporary phase out 1.13.2 support
 	//"1.13.2",
 	"1.14.4",
