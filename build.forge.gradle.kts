@@ -38,6 +38,8 @@ dependencies {
 	include(libs.jackson.databind)
 	include(libs.jackson.annotations)
 	include(libs.snakeyaml)
+	include(libs.jackson.core)
+	implementation(libs.jackson.core)
 	implementation(libs.jackson.dataformat.yaml)
 	implementation(libs.jackson.databind)
 	implementation(libs.jackson.annotations)
