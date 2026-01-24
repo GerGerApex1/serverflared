@@ -7,12 +7,12 @@ platform {
 	loader = "fabric"
 	dependencies {
 		required("minecraft") {
-			versionRange = ">=${prop("deps.minecraft")}"
+			versionRange = ">=${prop("deps.minecraft")} <${prop("deps.minecraft.maxVersion")}"
 		}
 		/*
 		required("fabric-api") {
 			slug("fabric-api")
-			versionRange = ">=${prop("deps.fabric-api")}"
+			versionRange = ">=${prop("deps.fabric-api")} <${prop("deps.fabric-api.maxVersion")} "
 		}
 		*/
 		required("fabricloader") {

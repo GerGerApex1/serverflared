@@ -30,12 +30,12 @@ val loaders = listOf("fabric" , "forge", "neoforge")
 val minecraftVersions = listOf(
 	"1.8.9",
 	"1.9",
-	"1.10.2",
+	"1.10",
 	"1.11",
-	"1.12.2",
-	//
-	//"1.14.4",
-	//"1.15.2",
+	// temporary phase out 1.13.2 support
+	//"1.13.2",
+	"1.14.4",
+	"1.15.2",
 	"1.16.5",
 	"1.18.2",
 	"1.19.2",

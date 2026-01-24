@@ -25,7 +25,14 @@ dependencies {
 	if (14 <= minorVersion) {
 		mappings(loom.officialMojangMappings())
 	} else {
-		mappings("de.oceanlabs.mcp:mcp_snapshot:${prop("deps.mcp")}@zip")
+		//println("${property("deps.mcp.channel")}")
+		if(!(providers.gradleProperty("deps.mcp.channel").isPresent) || property("deps.mcp.channel") == "snapshot") {
+			mappings("de.oceanlabs.mcp:mcp_snapshot:${prop("deps.mcp")}@zip")
+		} else if (property("deps.mcp.channel") == "stable") {
+			mappings("de.oceanlabs.mcp:mcp_stable:${prop("deps.mcp")}@zip")
+		} else {
+			error("Unknown MCP channel ${property("deps.mcp.channel")}")
+		}
 	}
 	include(libs.jackson.dataformat.yaml)
 	include(libs.jackson.databind)

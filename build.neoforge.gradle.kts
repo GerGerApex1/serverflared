@@ -9,11 +9,12 @@ platform {
 	loader = "neoforge"
 	dependencies {
 		required("minecraft") {
-			forgeVersionRange = "[${prop("deps.minecraft")}]"
+			forgeVersionRange = "[${prop("deps.minecraft")}, ${prop("deps.minecraft.maxVersion")})"
 		}
 		required("neoforge") {
 			forgeVersionRange = "[1,)"
 		}
+
 	}
 }
 
