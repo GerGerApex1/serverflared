@@ -7,7 +7,8 @@ import me.gergerapex1.serverflared.utils.ClassHelpers;
 import net.minecraftforge.fml.ModList;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.event.server.FMLServerStartingEvent;
-import net.minecraftforge.fml.loading.FMLLoader;
+//TODO: import proper development environment check
+//import net.minecraftforge.fml.loading.FMLLoader;
 import net.minecraft.server.MinecraftServer;
 import java.nio.file.Path;
 
@@ -28,7 +29,8 @@ public class ForgeModernPlatform implements Platform {
     }
     @Override
     public boolean isDevelopmentEnvironment() {
-        return !FMLLoader.isProduction();
+        //return !FMLLoader.isProduction();
+        return false;
     }
     @Override
     public Path getGameDirectory() {
