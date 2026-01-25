@@ -92,7 +92,7 @@ public class CloudFlaredHandler {
 
     private static String buildBinaryName(Platform osArch) {
         return Constants.CLOUDFLARED_BINARY_NAME + "-" + osArch.getOs() + "-" +
-               osArch.getArch() + "-" + osArch.getFileExtension();
+               osArch.getArch() + "" + osArch.getFileExtension();
     }
 
     private static void extractMacBinary(Path binariesFolder, String binaryName) {
