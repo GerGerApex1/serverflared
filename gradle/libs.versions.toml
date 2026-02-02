@@ -12,8 +12,9 @@ kotlin-jvm = "2.2.10"
 fletching-table = "0.1.0-alpha.22"
 moulberry-mixinconstraints = "1.1.0"
 jackson = "2.15.2"
-shadow = "8.3.0"
+shadow = "9.3.0"
 snakeyaml = "2.0"
+jvmdowngrader="1.3.6"
 [libraries]
 kikugie-postprocess = { module = "dev.kikugie:postprocess", version.ref = "stonecutter-postprocess" }
 mod-publish-plugin = { module = "me.modmuss50:mod-publish-plugin", version.ref = "mod-publish" }
@@ -26,7 +27,6 @@ jackson-dataformat-yaml = { module = "com.fasterxml.jackson.dataformat:jackson-d
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
 jackson-annotations = { module = "com.fasterxml.jackson.core:jackson-annotations", version.ref = "jackson" }
 jackson-core = { module = "com.fasterxml.jackson.core:jackson-core", version.ref = "jackson" }
-
 snakeyaml = { module = "org.yaml:snakeyaml", version.ref = "snakeyaml" }
 [plugins]
 stonecutter = { id = "dev.kikugie.stonecutter", version.ref = "stonecutter" }
@@ -40,3 +40,4 @@ kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin-jvm" }
 #fletching-table = { id = "dev.kikugie.fletching-table", version.ref = "fletching-table" }
 legacyforge-moddev = { id = "net.neoforged.moddev.legacyforge", version.ref = "neoforge-moddev" }
 gradleup-shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
+jvmdowngrader = { id = "xyz.wagyourtail.jvmdowngrader", version.ref = "jvmdowngrader" }
