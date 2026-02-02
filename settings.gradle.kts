@@ -25,7 +25,11 @@ plugins {
 	id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 	id("dev.kikugie.stonecutter") version "0.8.3"
 }
-
+buildscript {
+	dependencies {
+		classpath("org.apache.commons:commons-compress:1.27.1")
+	}
+}
 val loaders = listOf("fabric" , "forge", "neoforge")
 val minecraftVersions = listOf(
 	"1.8.9",
