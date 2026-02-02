@@ -9,7 +9,7 @@ import net.minecraftforge.fml.common.event.FMLServerStartingEvent;
 import net.minecraftforge.fml.common.event.FMLServerStoppingEvent;
 import net.minecraft.server.MinecraftServer;
 import java.nio.file.Path;
-
+import java.io.File;
 public class ForgeLegacyPlatform implements Platform {
 
 	@Override
@@ -38,7 +38,12 @@ public class ForgeLegacyPlatform implements Platform {
 
     @Override
     public Path getGameDirectory() {
-        return server.getDataDirectory().toPath();
+    	// TODO: Add proper implementation for legacy Forge
+    	// net.minecraftforge.fml.common.LoaderException:
+    	// java.lang.NoSuchMethodError: net.minecraft.server.MinecraftServer.getFile
+    	// why????
+    	// it exist in the gradle jar file but isn't found at runtime???
+        return new File(".").toPath();
     }
 
     @Override
@@ -53,7 +58,7 @@ public class ForgeLegacyPlatform implements Platform {
 
     @Override
     public String getLocalAddress() {
-		return ClassHelpers.normalizeToHostname( server);
+		return ClassHelpers.normalizeToHostname(server);
     }
 }
 *///?}

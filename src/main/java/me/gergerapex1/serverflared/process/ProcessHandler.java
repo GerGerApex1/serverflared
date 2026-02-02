@@ -14,7 +14,7 @@ import me.gergerapex1.serverflared.Constants;
 
 public class ProcessHandler {
     private final String binaryPath;
-    private final ArrayList<Long> pids = new ArrayList<>();
+    private final List<Process> processes = new ArrayList<>();
     private static final ExecutorService EXECUTOR_SERVICE = Executors.newCachedThreadPool();
 
     public ProcessHandler(String binaryPath) {
@@ -24,7 +24,7 @@ public class ProcessHandler {
     public Process run(SubCommand subCommand, Consumer<String> stdout, Consumer<String> stderr) {
         try {
             Process process = createProcess(subCommand);
-            pids.add(process.pid());
+            processes.add(process);
             EXECUTOR_SERVICE.submit(() -> captureProcessOutput(process.getInputStream(), stdout));
             EXECUTOR_SERVICE.submit(() -> captureProcessOutput(process.getErrorStream(), stderr));
 
@@ -62,11 +62,9 @@ public class ProcessHandler {
      */
     public Process runAsync(SubCommand subCommand, Consumer<String> stdout, Consumer<String> stderr) throws IOException {
         Process process = createProcess(subCommand);
-
         EXECUTOR_SERVICE.submit(() -> captureProcessOutput(process.getInputStream(), stdout));
         EXECUTOR_SERVICE.submit(() -> captureProcessOutput(process.getErrorStream(), stderr));
-
-        pids.add(process.pid());
+        processes.add(process);
         return process;
     }
     private static void captureProcessOutput(InputStream inputStream, Consumer<String> cb) {
@@ -81,8 +79,9 @@ public class ProcessHandler {
         }
     }
     private Process createProcess(SubCommand subCommand) throws IOException {
-        List<String> cmdList = subCommand.getCommandList();
-        cmdList.addFirst(binaryPath);
+        List<String> cmdList = new ArrayList<>(subCommand.getCommandList());
+        // Prepend binary path in a Java 8-safe way
+        cmdList.add(0, binaryPath);
         Constants.LOG.debug("Executing: {}", String.join(" ", cmdList));
 
         ProcessBuilder processBuilder = new ProcessBuilder(cmdList);
@@ -91,10 +90,14 @@ public class ProcessHandler {
     }
 
     public void terminate() {
-        for (Long pid : pids) {
-            ProcessHandle.of(pid).ifPresent(ProcessHandle::destroy);
-            Constants.LOG.info("Terminated processes with PID: {}", pid);
+        for (Process p : processes) {
+            try {
+                p.destroy();
+                Constants.LOG.info("Terminated process: {}", p);
+            } catch (Exception e) {
+                Constants.LOG.warn("Failed to terminate process: {}", p);
+            }
         }
-        pids.clear();
+        processes.clear();
     }
 }
