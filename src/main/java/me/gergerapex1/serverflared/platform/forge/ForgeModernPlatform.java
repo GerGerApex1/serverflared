@@ -6,7 +6,7 @@ package me.gergerapex1.serverflared.platform.forge;
 import me.gergerapex1.serverflared.utils.ClassHelpers;
 import net.minecraftforge.fml.ModList;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.event.server.FMLServerStartingEvent;
+import net.minecraftforge.event.server.ServerStartingEvent;
 //TODO: import proper development environment check
 //import net.minecraftforge.fml.loading.FMLLoader;
 import net.minecraft.server.MinecraftServer;
@@ -20,7 +20,7 @@ public class ForgeModernPlatform implements Platform {
 	}
 	private MinecraftServer server;
     @SubscribeEvent
-    public void serverStarting(FMLServerStartingEvent event) {
+    public void serverStarting(ServerStartingEvent event) {
         server = event.getServer();
     }
     @SubscribeEvent

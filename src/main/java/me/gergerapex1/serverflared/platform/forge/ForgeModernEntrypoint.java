@@ -5,9 +5,9 @@ package me.gergerapex1.serverflared.platform.forge;
 /*import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
-import net.minecraftforge.fml.event.server.FMLServerStartedEvent;
-import net.minecraftforge.fml.event.server.FMLServerStartingEvent;
-import net.minecraftforge.fml.event.server.FMLServerStoppingEvent;
+import net.minecraftforge.event.server.ServerStartedEvent;
+import net.minecraftforge.event.server.ServerStartingEvent;
+import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.fml.common.Mod;
 import me.gergerapex1.serverflared.Constants;
 import me.gergerapex1.serverflared.ModPlatformInstance;
@@ -21,14 +21,14 @@ public class ForgeModernEntrypoint {
 		MinecraftForge.EVENT_BUS.register(ForgeModernPlatform.class);
 	}
 	@SubscribeEvent
-    public void serverStarting(FMLServerStartingEvent event) {
+    public void serverStarting(ServerStartingEvent event) {
         ServerFlared.handleTunnel();
     }
     @SubscribeEvent
-    public void serverStopping(FMLServerStoppingEvent event) {
+    public void serverStopping(ServerStoppingEvent event) {
         ServerFlared.cleanup();
     }
     @SubscribeEvent
-    public void serverStarted(FMLServerStartedEvent event) { ServerFlared.startedServer(); }
+    public void serverStarted(ServerStartedEvent event) { ServerFlared.startedServer(); }
 }
 *///?}
