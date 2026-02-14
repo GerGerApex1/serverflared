@@ -17,6 +17,7 @@ pluginManagement {
 		}
 		maven("https://repo.essential.gg/repository/maven-public")
 		maven("https://repo.spongepowered.org/maven/")
+		maven("https://maven.wagyourtail.xyz/releases") { name = "WagYourTail" }
 	}
 	includeBuild("build-logic")
 }
