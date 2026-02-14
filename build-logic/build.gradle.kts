@@ -27,5 +27,5 @@ dependencies {
 	implementation(libs.kikugie.stonecutter)
 	implementation(libs.mod.publish.plugin)
 	implementation(libs.foojay.resolver)
-	implementation(libs.fletching.table)
+	//implementation(libs.fletching.table)
 }
