@@ -2,7 +2,6 @@ import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 
 plugins {
 	id("mod-platform")
-	id("gg.essential.loom")
 }
 
 platform {
@@ -10,6 +9,7 @@ platform {
 	dependencies {
 		required("minecraft") {
 			forgeVersionRange = "[${prop("deps.minecraft")}, ${prop("deps.minecraft.maxVersion")})"
+			environment = "server"
 		}
 		required("neoforge") {
 			forgeVersionRange = "[1,)"
@@ -18,52 +18,49 @@ platform {
 	}
 }
 
-dependencies {
-	minecraft("com.mojang:minecraft:${prop("deps.minecraft")}")
-	neoForge("net.neoforged:neoforge:${property("deps.neoforge")}")
+unimined.minecraft {
+	version = prop("deps.minecraft")
 
-	mappings(loom.officialMojangMappings())
+	mappings {
+		mojmap()
+	}
+
+	neoForge {
+		loader(prop("deps.neoforge"))
+	}
+
+	minecraftRemapper.config {
+		ignoreConflicts(true)
+	}
+	runs {
+		config("client") {
+
+		}
+		config("server") {
+			workingDir("run/")
+			//name = "NeoForge Server (${prop("deps.minecraft")})"
+		}
+	}
+}
+dependencies {
 	implementation(libs.jackson.dataformat.yaml)
-	include(libs.jackson.dataformat.yaml)
-	include(libs.jackson.databind)
-	include(libs.jackson.annotations)
-	include(libs.snakeyaml)
-	include(libs.jackson.core)
 	implementation(libs.jackson.core)
 	implementation(libs.jackson.dataformat.yaml)
 	implementation(libs.jackson.databind)
 	implementation(libs.jackson.annotations)
 	implementation(libs.snakeyaml)
-}
-
-loom {
-	runs {
-		runs.named("server") {
-			server()
-			ideConfigGenerated(true)
-			runDir = "run/"
-			environment = "server"
-			configName = "NeoForge Server (${prop("deps.minecraft")})"
-		}
-		runs.named("client") {
-			ideConfigGenerated(false)
-		}
-	}
-
-	mods {
-		register(property("mod.id") as String) {
-			sourceSet(sourceSets["main"])
-		}
-	}
-
-}
-val shadowBundle: Configuration by configurations.creating {
-	isCanBeConsumed = false
-	isCanBeResolved = true
-}
-tasks.withType<ShadowJar> {
-	configurations = listOf(shadowBundle)
-	archiveClassifier.set("shadowed")
+	/*
+	include(libs.jackson.dataformat.yaml)
+	include(libs.jackson.databind)
+	include(libs.jackson.annotations)
+	include(libs.snakeyaml)
+	include(libs.jackson.core)
+	forgeRuntimeLibrary(libs.jackson.dataformat.yaml)
+	forgeRuntimeLibrary(libs.jackson.databind)
+	forgeRuntimeLibrary(libs.jackson.annotations)
+	forgeRuntimeLibrary(libs.snakeyaml)
+	forgeRuntimeLibrary(libs.jackson.core)
+	 */
 }
 repositories {
 	maven {
