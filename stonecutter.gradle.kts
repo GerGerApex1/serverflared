@@ -3,15 +3,13 @@ import org.jetbrains.kotlin.gradle.utils.property
 plugins {
 	alias(libs.plugins.stonecutter)
 	alias(libs.plugins.dotenv)
-	alias(libs.plugins.fabric.loom).apply(false)
-	alias(libs.plugins.neoforged.moddev).apply(false)
 	alias(libs.plugins.jsonlang.postprocess).apply(false)
 	alias(libs.plugins.mod.publish.plugin).apply(false)
 	alias(libs.plugins.kotlin.jvm).apply(false)
 	alias(libs.plugins.devtools.ksp).apply(false)
 	//alias(libs.plugins.fletching.table).apply(false)
-	alias(libs.plugins.legacyforge.moddev).apply(false)
 	alias(libs.plugins.gradleup.shadow).apply(false)
+	alias(libs.plugins.unimined).apply(false)
 }
 
 stonecutter active file(".sc_active_version")
@@ -61,7 +59,6 @@ stonecutter parameters {
 		current.parsed < "1.10" -> "return server.getHostname();"
 		else -> "return server.getServerHostname();"
 	}
-	//println(current.parsed >= "1.18")
 	replacements.string("forge_imports_modern", current.parsed >= "1.18") {
 		replace("net.minecraftforge.fml.event.server", "net.minecraftforge.event.server")
 		replace("FMLServerStartedEvent", "ServerStartedEvent")
