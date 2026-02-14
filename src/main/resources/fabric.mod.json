@@ -26,5 +26,5 @@
       "${group}.${id}.platform.fabric.FabricEntrypoint"
     ]
   },
-  ${dependencies}
+  "dependancies": {}
 }
