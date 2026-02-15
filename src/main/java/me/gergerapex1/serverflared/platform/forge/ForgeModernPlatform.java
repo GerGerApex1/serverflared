@@ -2,11 +2,10 @@
 package me.gergerapex1.serverflared.platform.forge;
 
 //? forge && !legacy_forge {
-/*import me.gergerapex1.serverflared.platform.Platform;
-import me.gergerapex1.serverflared.utils.ClassHelpers;
+/*import me.gergerapex1.serverflared.utils.ClassHelpers;
 import net.minecraftforge.fml.ModList;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.event.server.ServerStartingEvent;
+import net.minecraftforge.fml.event.server.FMLServerStartingEvent;
 //TODO: import proper development environment check
 //import net.minecraftforge.fml.loading.FMLLoader;
 import net.minecraft.server.MinecraftServer;
@@ -20,7 +19,7 @@ public class ForgeModernPlatform implements Platform {
 	}
 	private MinecraftServer server;
     @SubscribeEvent
-    public void serverStarting(ServerStartingEvent event) {
+    public void serverStarting(FMLServerStartingEvent event) {
         server = event.getServer();
     }
     @SubscribeEvent
@@ -34,8 +33,7 @@ public class ForgeModernPlatform implements Platform {
     }
     @Override
     public Path getGameDirectory() {
-		Object serverDirectory = server.getServerDirectory();
-		return ClassHelpers.normalizeToPath(serverDirectory);
+		return new File(".").toPath();
     }
 	@Override
     public ModLoader getPlatformName() {
