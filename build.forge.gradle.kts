@@ -1,6 +1,7 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import xyz.wagyourtail.jvmdg.gradle.task.DowngradeJar
 import xyz.wagyourtail.jvmdg.gradle.task.ShadeJar
+import xyz.wagyourtail.unimined.api.minecraft.patch.forge.ForgeLikePatcher
 
 plugins {
 	id("mod-platform")
@@ -46,9 +47,7 @@ unimined.minecraft {
 	}
 
 	//side("server")
-	forge {
-		loader("${property("deps.forge")}")
-	}
+	minecraftForge { loader("${property("deps.forge")}") }
 
 	minecraftRemapper.config {
 		ignoreConflicts(true)
