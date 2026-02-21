@@ -31,7 +31,7 @@ buildscript {
 		classpath("org.apache.commons:commons-compress:1.27.1")
 	}
 }
-val loaders = listOf("fabric", "fabric", "neoforge")
+val loaders = listOf("forge", "fabric", "neoforge")
 val minecraftVersions = listOf(
 	"1.8.9",
 	"1.9",
@@ -56,7 +56,7 @@ stonecutter {
 				for (loader in loaderList) {
 					val minorVersion = mcVersion.split(".").getOrNull(1)?.toIntOrNull()?: continue
 					if (!isSupported(minorVersion, loader)) continue
-
+					println("Adding version $mcVersion with loader $loader")
 					version("$mcVersion-$loader", mcVersion).buildscript = "build.$loader.gradle.kts"
 				}
 			}
