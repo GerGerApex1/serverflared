@@ -2,30 +2,26 @@
 package me.gergerapex1.serverflared.platform.forge;
 
 //? forge && !legacy_forge {
-/*import me.gergerapex1.serverflared.utils.ClassHelpers;
+/*import java.io.File;
+import me.gergerapex1.serverflared.Constants;
+import me.gergerapex1.serverflared.platform.Platform;
+import me.gergerapex1.serverflared.utils.ClassHelpers;
 import net.minecraftforge.fml.ModList;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.event.server.FMLServerStartingEvent;
 //TODO: import proper development environment check
 //import net.minecraftforge.fml.loading.FMLLoader;
 import net.minecraft.server.MinecraftServer;
 import java.nio.file.Path;
+import net.minecraftforge.event.server.ServerStoppingEvent;
+import net.minecraftforge.event.server.ServerLifecycleEvent;
+import net.minecraftforge.fml.server.ServerLifecycleHooks;
 
 public class ForgeModernPlatform implements Platform {
-
+	private static MinecraftServer serverHook = ServerLifecycleHooks.getCurrentServer();
 	@Override
 	public boolean isModLoaded(String modId) {
 		return ModList.get().isLoaded(modId);
 	}
-	private MinecraftServer server;
-    @SubscribeEvent
-    public void serverStarting(FMLServerStartingEvent event) {
-        server = event.getServer();
-    }
-    @SubscribeEvent
-    public void serverStopping() {
-        server = null;
-    }
     @Override
     public boolean isDevelopmentEnvironment() {
         //return !FMLLoader.isProduction();
@@ -33,7 +29,7 @@ public class ForgeModernPlatform implements Platform {
     }
     @Override
     public Path getGameDirectory() {
-		return new File(".").toPath();
+		return serverHook != null ? server.getServerDirectory().toPath() : new File(".").toPath();
     }
 	@Override
     public ModLoader getPlatformName() {
@@ -45,11 +41,11 @@ public class ForgeModernPlatform implements Platform {
     }
     @Override
     public int getServerPort() {
-        return server.getPort();
+		return serverHook != null ? server.getPort() : 25565;
     }
     @Override
     public String getLocalAddress() {
-        return server.getLocalIp();
+        return serverHook != null ? server.getLocalIp() : "0.0.0.0";
     }
 }
 *///?}
