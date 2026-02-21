@@ -31,7 +31,7 @@ buildscript {
 		classpath("org.apache.commons:commons-compress:1.27.1")
 	}
 }
-val loaders = listOf("fabric" , "forge", "neoforge")
+val loaders = listOf("fabric", "fabric", "neoforge")
 val minecraftVersions = listOf(
 	"1.8.9",
 	"1.9",

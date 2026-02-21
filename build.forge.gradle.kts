@@ -1,7 +1,7 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import xyz.wagyourtail.jvmdg.gradle.task.DowngradeJar
 import xyz.wagyourtail.jvmdg.gradle.task.ShadeJar
-import xyz.wagyourtail.unimined.api.minecraft.patch.forge.ForgeLikePatcher
+import xyz.wagyourtail.unimined.internal.minecraft.task.RemapJarTaskImpl
 
 plugins {
 	id("mod-platform")
@@ -16,6 +16,7 @@ val javaCompileVersion: JavaVersion = when {
 	stonecutter.eval(stonecutter.current.version, ">=1.17") -> JavaVersion.VERSION_16
 	else -> JavaVersion.VERSION_1_8
 }
+jvmdg.shadePath = { "me.gergerapex1.shaded.jvmdg.api" }
 platform {
 	loader = "forge"
 	dependencies {
@@ -47,7 +48,9 @@ unimined.minecraft {
 	}
 
 	//side("server")
-	minecraftForge { loader("${property("deps.forge")}") }
+	minecraftForge {
+		loader("${property("deps.forge")}")
+	}
 
 	minecraftRemapper.config {
 		ignoreConflicts(true)
@@ -58,13 +61,9 @@ unimined.minecraft {
 			//name = "Forge Server (${prop("deps.minecraft")})"
 		}
 	}
+	defaultRemapJar = true
 }
 dependencies {
-	// include(libs.jackson.dataformat.yaml)
-	// include(libs.jackson.databind)
-	// include(libs.jackson.annotations)
-	// include(libs.snakeyaml)
-	// include(libs.jackson.core)
 	implementation(libs.jackson.core)
 	implementation(libs.jackson.dataformat.yaml)
 	implementation(libs.jackson.databind)
@@ -72,74 +71,39 @@ dependencies {
 	implementation(libs.snakeyaml)
 
 	// Source: https://mvnrepository.com/artifact/xyz.wagyourtail.jvmdowngrader/jvmdowngrader-java-api
-	//include("xyz.wagyourtail.jvmdowngrader:jvmdowngrader-java-api:1.3.6:downgraded-8")
-	// forgeRuntimeLibrary(libs.jackson.dataformat.yaml)
-	// forgeRuntimeLibrary(libs.jackson.databind)
-	// forgeRuntimeLibrary(libs.jackson.annotations)
-	// forgeRuntimeLibrary(libs.snakeyaml)
-	// forgeRuntimeLibrary(libs.jackson.core)
+	//implementation("xyz.wagyourtail.jvmdowngrader:jvmdowngrader-java-api:1.3.6:downgraded-8")
 }
 val shadowImpl by configurations.creating {
 	isCanBeResolved = true
 	isCanBeConsumed = false
 	extendsFrom(configurations.implementation.get())
 }
-/*
-tasks.named<Jar>("jar") {
-	archiveClassifier.set("unshaded")
-}
-tasks.named("remapJar") {
-	dependsOn("shadowJar")
+tasks.named<RemapJarTaskImpl>("remapJar") {
+	dependsOn("shadeDowngradedApi")
+	inputFile.set(tasks.named<ShadeJar>("shadeDowngradedApi").flatMap { it.archiveFile })
+	archiveClassifier.set("remapped")
 }
 tasks.named<DowngradeJar>("downgradeJar") {
-	//dependsOn(tasks.named<RemapJarTask>("remapJar").get().archiveFile)
-	inputFile.set(tasks.named<Jar>("jar").get().archiveFile)
+	inputFile.set(tasks.named<ShadowJar>("shadowJar").get().archiveFile)
 	archiveClassifier = "downgradedJar"
 	downgradeTo = JavaVersion.VERSION_1_8
 }
 tasks.named<ShadeJar>(	"shadeDowngradedApi") {
+	dependsOn("downgradeJar")
 	inputFile.set(tasks.named<DowngradeJar>("downgradeJar").get().archiveFile)
 	archiveClassifier = "shadeDowngradedJar"
 	downgradeTo = JavaVersion.VERSION_1_8
+
 }
-tasks.shadowJar {
-	dependsOn("shadeDowngradedApi")
+tasks.named<ShadowJar>("shadowJar") {
+	//from(tasks.named<Jar>("remapJarSearge").flatMap { it.archiveFile })
+
 	configurations = listOf(shadowImpl)
-	System.out.println("")
+
 	archiveClassifier.set("shadow")
+
 	relocate("com.fasterxml.jackson", "me.gergerapex1.shaded.fasterxml.jackson")
 }
- */
-/*
-tasks.register<DowngradeJar>("customDowngrade") {
-	inputFile.set(tasks.named<Jar>("jar").get().archiveFile)
-	downgradeTo.set(javaCompileVersion)
-	archiveClassifier.set("")
+tasks.assemble {
+	dependsOn("remapJar")
 }
-
-tasks.register<ShadeJar>("customShadeDowngrade") {
-	inputFile.set(tasks.named<DowngradeJar>("customDowngrade").get().archiveFile)
-	downgradeTo.set(javaCompileVersion)
-	archiveClassifier.set("test")
-}
-
- */
-/*
-
- */
-/*
-java {
-	java {
-		toolchain {
-			languageVersion.set(
-				when {
-					stonecutter.eval(stonecutter.current.version, ">=1.20.6") -> JavaLanguageVersion.of(21)
-					stonecutter.eval(stonecutter.current.version, ">=1.18") -> JavaLanguageVersion.of(17)
-					stonecutter.eval(stonecutter.current.version, ">=1.17") -> JavaLanguageVersion.of(16)
-					else -> JavaLanguageVersion.of(8)
-				}
-			)
-		}
-	}
-}
- */
