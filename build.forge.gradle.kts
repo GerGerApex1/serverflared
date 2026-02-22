@@ -78,22 +78,25 @@ val shadowImpl by configurations.creating {
 	isCanBeConsumed = false
 	extendsFrom(configurations.implementation.get())
 }
-tasks.named<RemapJarTaskImpl>("remapJar") {
-	dependsOn("shadeDowngradedApi")
-	inputFile.set(tasks.named<ShadeJar>("shadeDowngradedApi").flatMap { it.archiveFile })
-	archiveClassifier.set("remapped")
-}
-tasks.named<DowngradeJar>("downgradeJar") {
-	inputFile.set(tasks.named<ShadowJar>("shadowJar").get().archiveFile)
-	archiveClassifier = "downgradedJar"
-	downgradeTo = JavaVersion.VERSION_1_8
-}
-tasks.named<ShadeJar>(	"shadeDowngradedApi") {
-	dependsOn("downgradeJar")
-	inputFile.set(tasks.named<DowngradeJar>("downgradeJar").get().archiveFile)
-	archiveClassifier = "shadeDowngradedJar"
-	downgradeTo = JavaVersion.VERSION_1_8
-
+val needDowngrade = JavaVersion.current() < javaCompileVersion
+afterEvaluate {
+	if (needDowngrade) {
+		tasks.named<RemapJarTaskImpl>("remapJar") {
+			dependsOn("shadeDowngradedApi")
+			inputFile.set(tasks.named<ShadeJar>("shadeDowngradedApi").flatMap { it.archiveFile })
+			archiveClassifier.set("remapped")
+		}
+		tasks.named<DowngradeJar>("downgradeJar") {
+			inputFile.set(tasks.named<ShadowJar>("shadowJar").get().archiveFile)
+			archiveClassifier = "downgradedJar"
+			downgradeTo = javaCompileVersion
+		}
+		tasks.named<ShadeJar>("shadeDowngradedApi") {
+			dependsOn("downgradeJar")
+			inputFile.set(tasks.named<DowngradeJar>("downgradeJar").get().archiveFile)
+			archiveClassifier = "shadeDowngradedJar"
+		}
+	}
 }
 tasks.named<ShadowJar>("shadowJar") {
 	//from(tasks.named<Jar>("remapJarSearge").flatMap { it.archiveFile })
@@ -103,7 +106,9 @@ tasks.named<ShadowJar>("shadowJar") {
 	archiveClassifier.set("shadow")
 
 	relocate("com.fasterxml.jackson", "me.gergerapex1.shaded.fasterxml.jackson")
+	relocate("org.yaml.snakeyaml", "me.gergerapex1.shaded.org.yaml.snakeyaml")
 }
 tasks.assemble {
 	dependsOn("remapJar")
 }
+
