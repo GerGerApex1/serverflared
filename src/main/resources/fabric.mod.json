@@ -10,13 +10,6 @@
     "issues": "${issues_url}",
     "homepage": "${homepage_url}"
   },
-  "custom": {
-    "modmenu": {
-      "links": {
-        "modmenu.discord": "${discord_url}"
-      }
-    }
-  },
   "description": "${description}",
   "icon": "assets/icon.png",
   "license": "${license}",
@@ -26,5 +19,5 @@
       "${group}.${id}.platform.fabric.FabricEntrypoint"
     ]
   },
-  "dependancies": {}
+  "dependencies": {}
 }
