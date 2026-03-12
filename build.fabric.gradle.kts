@@ -24,7 +24,7 @@ platform {
 		}
 		required("fabric-api") {
 			slug("fabric-api")
-			versionRange = ">=${prop("deps.fabric-api")} <${prop("deps.fabric-api.maxVersion")} "
+			versionRange = ">=${prop("deps.fabric-api")}"
 		}
 		required("fabricloader") {
 			versionRange = ">=0.12.0"
@@ -61,26 +61,29 @@ val shadowImpl by configurations.creating {
 	isCanBeConsumed = false
 	extendsFrom(configurations.implementation.get())
 }
-val needDowngrade = JavaVersion.current() < javaCompileVersion
+val needDowngrade = JavaVersion.current() > javaCompileVersion
 afterEvaluate {
-	if(needDowngrade) {
-		tasks.assemble {
-			dependsOn("remapJar")
-		}
+	if (needDowngrade) {
 		tasks.named<RemapJarTaskImpl>("remapJar") {
 			dependsOn("shadeDowngradedApi")
 			inputFile.set(tasks.named<ShadeJar>("shadeDowngradedApi").flatMap { it.archiveFile })
-			archiveClassifier.set("remapped")
+			archiveClassifier.set("")
 		}
 		tasks.named<DowngradeJar>("downgradeJar") {
 			inputFile.set(tasks.named<ShadowJar>("shadowJar").get().archiveFile)
 			archiveClassifier = "downgradedJar"
 			downgradeTo = javaCompileVersion
 		}
-		tasks.named<ShadeJar>(	"shadeDowngradedApi") {
+		tasks.named<ShadeJar>("shadeDowngradedApi") {
 			dependsOn("downgradeJar")
 			inputFile.set(tasks.named<DowngradeJar>("downgradeJar").get().archiveFile)
 			archiveClassifier = "shadeDowngradedJar"
+		}
+	} else {
+		tasks.named<RemapJarTaskImpl>("remapJar") {
+			dependsOn("shadowJar")
+			inputFile.set(tasks.named<ShadowJar>("shadowJar").flatMap { it.archiveFile })
+			archiveClassifier.set("")
 		}
 	}
 }
@@ -96,7 +99,9 @@ tasks.named<ShadowJar>("shadowJar") {
 
 val fabricLifecycleModule = fabricApi.fabricModule("fabric-lifecycle-events-v1", prop("deps.fabric-api"))
 val fabricBaseModule = fabricApi.fabricModule("fabric-api-base", prop("deps.fabric-api"))
-
+tasks.assemble {
+	dependsOn("remapJar")
+}
 dependencies {
 	implementation(libs.jackson.core)
 	implementation(libs.jackson.dataformat.yaml)

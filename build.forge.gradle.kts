@@ -21,7 +21,7 @@ platform {
 	loader = "forge"
 	dependencies {
 		required("minecraft") {
-			forgeVersionRange = "[${prop("deps.minecraft")}]"
+			forgeVersionRange =  "[${prop("deps.minecraft")}, ${prop("deps.minecraft.maxVersion")}]"
 			environment = "server"
 		}
 		required("forge") {
@@ -78,13 +78,13 @@ val shadowImpl by configurations.creating {
 	isCanBeConsumed = false
 	extendsFrom(configurations.implementation.get())
 }
-val needDowngrade = JavaVersion.current() < javaCompileVersion
+val needDowngrade = JavaVersion.current() > javaCompileVersion
 afterEvaluate {
 	if (needDowngrade) {
 		tasks.named<RemapJarTaskImpl>("remapJar") {
 			dependsOn("shadeDowngradedApi")
 			inputFile.set(tasks.named<ShadeJar>("shadeDowngradedApi").flatMap { it.archiveFile })
-			archiveClassifier.set("remapped")
+			archiveClassifier.set("")
 		}
 		tasks.named<DowngradeJar>("downgradeJar") {
 			inputFile.set(tasks.named<ShadowJar>("shadowJar").get().archiveFile)
@@ -96,11 +96,15 @@ afterEvaluate {
 			inputFile.set(tasks.named<DowngradeJar>("downgradeJar").get().archiveFile)
 			archiveClassifier = "shadeDowngradedJar"
 		}
+	} else {
+		tasks.named<RemapJarTaskImpl>("remapJar") {
+			dependsOn("shadowJar")
+			inputFile.set(tasks.named<ShadowJar>("shadowJar").flatMap { it.archiveFile })
+			archiveClassifier.set("")
+		}
 	}
 }
 tasks.named<ShadowJar>("shadowJar") {
-	//from(tasks.named<Jar>("remapJarSearge").flatMap { it.archiveFile })
-
 	configurations = listOf(shadowImpl)
 
 	archiveClassifier.set("shadow")

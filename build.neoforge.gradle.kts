@@ -19,11 +19,11 @@ platform {
 	loader = "neoforge"
 	dependencies {
 		required("minecraft") {
-			forgeVersionRange = "[${prop("deps.minecraft")}, ${prop("deps.minecraft.maxVersion")})"
+			forgeVersionRange = "[${prop("deps.minecraft")}, ${prop("deps.minecraft.maxVersion")}]"
 			environment = "server"
 		}
 		required("neoforge") {
-			forgeVersionRange = "[1,)"
+			forgeVersionRange = "[1.0,)"
 		}
 
 	}
@@ -65,26 +65,43 @@ val shadowImpl by configurations.creating {
 	isCanBeConsumed = false
 	extendsFrom(configurations.implementation.get())
 }
-val needDowngrade = JavaVersion.current() < javaCompileVersion
+val needDowngrade = JavaVersion.current() > javaCompileVersion
 afterEvaluate {
 	if (needDowngrade) {
+
 		tasks.named<RemapJarTaskImpl>("remapJar") {
-			dependsOn("shadeDowngradedApi")
-			inputFile.set(tasks.named<ShadeJar>("shadeDowngradedApi").flatMap { it.archiveFile })
-			archiveClassifier.set("remapped")
+			dependsOn("shadowJar")
+			inputFile.set(tasks.named<ShadowJar>("shadowJar").flatMap { it.archiveFile })
+			archiveClassifier.set("")
 		}
+
 		tasks.named<DowngradeJar>("downgradeJar") {
-			inputFile.set(tasks.named<ShadowJar>("shadowJar").get().archiveFile)
+			// keep as you had it
+			inputFile.set(tasks.named<RemapJarTaskImpl>("remapJar").flatMap { it.archiveFile })
 			archiveClassifier = "downgradedJar"
 			downgradeTo = javaCompileVersion
 		}
+
 		tasks.named<ShadeJar>("shadeDowngradedApi") {
-			dependsOn("downgradeJar")
-			inputFile.set(tasks.named<DowngradeJar>("downgradeJar").get().archiveFile)
+			//dependsOn("shadowJar")
+			//jvmdg.multiReleaseOriginal = false
+			//inputFile.set(tasks.named<ShadowJar>("shadowJar").flatMap { it.archiveFile })
 			archiveClassifier = "shadeDowngradedJar"
+		}
+
+		tasks.named<ShadowJar>("shadowJar") {
+			//dependsOn("downgradeJar")
+			//from(zipTree(tasks.named<ShadeJar>("shadeDowngradedApi").flatMap { it.archiveFile }))
+		}
+	} else {
+		tasks.named<RemapJarTaskImpl>("remapJar") {
+			dependsOn("shadowJar")
+			inputFile.set(tasks.named<ShadowJar>("shadowJar").flatMap { it.archiveFile })
+			archiveClassifier.set("")
 		}
 	}
 }
+
 tasks.named<ShadowJar>("shadowJar") {
 	//from(tasks.named<Jar>("remapJarSearge").flatMap { it.archiveFile })
 
