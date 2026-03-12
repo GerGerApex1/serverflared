@@ -45,11 +45,11 @@ public class ForgeModernPlatform implements Platform {
     }
     @Override
     public int getServerPort() {
-		return serverHook != null ? server.getPort() : 25565;
+		return serverHook != null ? serverHook.getPort() : 25565;
     }
     @Override
     public String getLocalAddress() {
-        return serverHook != null ? server.getLocalIp() : "0.0.0.0";
+        return serverHook != null ? serverHook.getLocalIp() : "0.0.0.0";
     }
 }
 *///?}
