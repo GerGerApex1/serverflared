@@ -29,7 +29,11 @@ public class ForgeModernPlatform implements Platform {
     }
     @Override
     public Path getGameDirectory() {
-		return serverHook != null ? server.getServerDirectory().toPath() : new File(".").toPath();
+		//? if >1.21 {
+		return serverHook != null ? serverHook.getServerDirectory() : Path.of(".");
+		//? } else {
+		/^return serverHook != null ? serverHook.getServerDirectory().toPath() : Path.of(".");
+		^///? }
     }
 	@Override
     public ModLoader getPlatformName() {

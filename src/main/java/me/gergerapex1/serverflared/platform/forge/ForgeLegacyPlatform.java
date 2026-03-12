@@ -11,7 +11,6 @@ import net.minecraft.server.MinecraftServer;
 import java.nio.file.Path;
 import java.io.File;
 public class ForgeLegacyPlatform implements Platform {
-
 	@Override
 	public boolean isModLoaded(String modId) {
 		return Loader.isModLoaded(modId);
@@ -38,12 +37,7 @@ public class ForgeLegacyPlatform implements Platform {
 
     @Override
     public Path getGameDirectory() {
-    	// TODO: Add proper implementation for legacy Forge
-    	// net.minecraftforge.fml.common.LoaderException:
-    	// java.lang.NoSuchMethodError: net.minecraft.server.MinecraftServer.getFile
-    	// why????
-    	// it exist in the gradle jar file but isn't found at runtime???
-        return new File(".").toPath();
+        return server.getDataDirectory().toPath();
     }
 
     @Override
@@ -51,14 +45,13 @@ public class ForgeLegacyPlatform implements Platform {
         return getGameDirectory().resolve("config");
     }
 
-    @Override
-    public int getServerPort() {
-    	return ClassHelpers.normalizeToServerPort(server);
-    }
-
-    @Override
-    public String getLocalAddress() {
-		return ClassHelpers.normalizeToHostname(server);
-    }
+	@Override
+	public int getServerPort() {
+		return server != null ? server.getServerPort() : 25565;
+	}
+	@Override
+	public String getLocalAddress() {
+		return server != null ? server.getServerHostname() : "0.0.0.0";
+	}
 }
 *///?}
