@@ -72,7 +72,7 @@ jobs:
 
 
       - name: Build with Gradle
-        run: ./gradlew buildAndCollect --no-daemon
+        run: ./gradlew ${{ matrix.version }}:buildAndCollect --no-daemon
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
