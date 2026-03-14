@@ -2,20 +2,14 @@
 package me.gergerapex1.serverflared.platform.forge;
 
 //? forge && !legacy_forge {
-/*import java.io.File;
-import me.gergerapex1.serverflared.Constants;
-import me.gergerapex1.serverflared.platform.Platform;
-import me.gergerapex1.serverflared.utils.ClassHelpers;
+/*import me.gergerapex1.serverflared.platform.Platform;
 import net.minecraftforge.fml.ModList;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
 //TODO: import proper development environment check
 //import net.minecraftforge.fml.loading.FMLLoader;
 import net.minecraft.server.MinecraftServer;
 import java.nio.file.Path;
-import net.minecraftforge.event.server.ServerStoppingEvent;
-import net.minecraftforge.event.server.ServerLifecycleEvent;
-import net.minecraftforge.fml.server.ServerLifecycleHooks;
-
+//$ fml_serverlifecyclehooks_1_18
+import net.minecraftforge.server.ServerLifecycleHooks;
 public class ForgeModernPlatform implements Platform {
 	private static MinecraftServer serverHook = ServerLifecycleHooks.getCurrentServer();
 	@Override

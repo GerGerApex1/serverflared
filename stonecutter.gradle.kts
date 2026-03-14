@@ -49,11 +49,14 @@ stonecutter parameters {
 	val isLegacyForge = minorVersion?.let { it <= 12 } ?: false
 	constants["legacy_forge"] = isLegacyForge
 	constants["release"] = property("mod.id") != "modtemplate"
-	replacements.string("forge_imports_modern", current.parsed >= "1.18") {
+	replacements.string(current.parsed >= "1.18", "forge_imports_modern") {
 		replace("net.minecraftforge.fml.event.server", "net.minecraftforge.event.server")
 		replace("FMLServerStartedEvent", "ServerStartedEvent")
 		replace("FMLServerStartingEvent", "ServerStartingEvent")
 		replace("FMLServerStoppingEvent", "ServerStoppingEvent")
-		// remove FML from event names
+	}
+	swaps["fml_serverlifecyclehooks_1_18"] = when {
+		eval(current.version, ">1.17") -> "import net.minecraftforge.server.ServerLifecycleHooks;"
+		else -> "import net.minecraftforge.fml.server.ServerLifecycleHooks;"
 	}
 }
