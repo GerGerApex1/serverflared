@@ -77,7 +77,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: build-artifacts
+          name: build-artifacts-${{ matrix.version }}
           path: build/libs/
   collect:
     name: Collect All Artifacts
