@@ -24,7 +24,7 @@ pluginManagement {
 
 plugins {
 	id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
-	id("dev.kikugie.stonecutter") version "0.9-alpha.7"
+	id("dev.kikugie.stonecutter") version "0.9-beta.2"
 }
 buildscript {
 	dependencies {
@@ -40,6 +40,7 @@ val minecraftVersions = listOf(
 	"1.12",
 	// temporary phase out 1.13.2 support
 	//"1.13.2",
+	"1.17.1",
 	"1.14.4",
 	"1.15.2",
 	"1.16.5",
