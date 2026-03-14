@@ -1,5 +1,7 @@
 name: Developmental Builds
 on: [ push, pull_request ]
+permissions:
+  contents: read
 
 jobs:
   build:
