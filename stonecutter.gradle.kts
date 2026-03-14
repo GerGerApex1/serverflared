@@ -56,7 +56,7 @@ stonecutter parameters {
 		replace("FMLServerStoppingEvent", "ServerStoppingEvent")
 	}
 	swaps["fml_serverlifecyclehooks_1_18"] = when {
-		eval(current.version, ">1.17") -> "import net.minecraftforge.server.ServerLifecycleHooks;"
+		eval(current.version, ">=1.18") -> "import net.minecraftforge.server.ServerLifecycleHooks;"
 		else -> "import net.minecraftforge.fml.server.ServerLifecycleHooks;"
 	}
 }
