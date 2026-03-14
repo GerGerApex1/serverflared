@@ -78,7 +78,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-artifacts
-          path: build-temp/libs/
+          path: build/libs/
   collect:
     name: Collect All Artifacts
     runs-on: ubuntu-latest
