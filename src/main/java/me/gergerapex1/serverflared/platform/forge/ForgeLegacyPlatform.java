@@ -2,7 +2,6 @@ package me.gergerapex1.serverflared.platform.forge;
 
 //? forge && legacy_forge {
 /*import me.gergerapex1.serverflared.platform.Platform;
-import me.gergerapex1.serverflared.utils.ClassHelpers;
 import net.minecraftforge.fml.common.Loader;
 import net.minecraftforge.fml.common.Mod.EventHandler;
 import net.minecraftforge.fml.common.event.FMLServerStartingEvent;
