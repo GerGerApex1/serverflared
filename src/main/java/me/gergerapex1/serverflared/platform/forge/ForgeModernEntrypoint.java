@@ -9,10 +9,8 @@ import net.minecraftforge.fml.common.Mod;
 import me.gergerapex1.serverflared.Constants;
 import me.gergerapex1.serverflared.ModPlatformInstance;
 import me.gergerapex1.serverflared.ServerFlared;
-import net.minecraftforge.event.server.ServerStartedEvent;
-import net.minecraftforge.event.server.ServerStartingEvent;
-import net.minecraftforge.event.server.ServerStoppingEvent;
-
+//$ fml_serverevents
+import net.minecraftforge.fml.event.server.*
 @Mod(Constants.MOD_ID)
 public class ForgeModernEntrypoint {
 	public ForgeModernEntrypoint() {
