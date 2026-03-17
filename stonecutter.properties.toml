@@ -111,7 +111,7 @@ loader.minecraft="1.18.2"
 deps.minecraft.min="1.18"
 deps.minecraft.max="1.19.1"
 
-publish.additionalVersions="1.19,1.19.1,1.19.1"
+publish.additionalVersions="1.18.1,1.19,1.19.1"
 ["1.18.2-fabric"]
 deps.fabric-api="0.44.0+1.18"
 
