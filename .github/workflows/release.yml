@@ -220,4 +220,4 @@ jobs:
       # TODO: Add curseforge page
       - name: Publish to Platforms
         run: |
-          ./gradlew publishMods --stacktrace
+          ./gradlew ${{ matrix.version }}:publishMods --stacktrace
