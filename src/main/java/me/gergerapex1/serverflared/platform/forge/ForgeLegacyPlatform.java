@@ -2,16 +2,14 @@ package me.gergerapex1.serverflared.platform.forge;
 
 //? forge && legacy_forge {
 /*import me.gergerapex1.serverflared.platform.Platform;
-import me.gergerapex1.serverflared.utils.ClassHelpers;
 import net.minecraftforge.fml.common.Loader;
 import net.minecraftforge.fml.common.Mod.EventHandler;
 import net.minecraftforge.fml.common.event.FMLServerStartingEvent;
 import net.minecraftforge.fml.common.event.FMLServerStoppingEvent;
 import net.minecraft.server.MinecraftServer;
 import java.nio.file.Path;
-
+import java.io.File;
 public class ForgeLegacyPlatform implements Platform {
-
 	@Override
 	public boolean isModLoaded(String modId) {
 		return Loader.isModLoaded(modId);
@@ -46,14 +44,13 @@ public class ForgeLegacyPlatform implements Platform {
         return getGameDirectory().resolve("config");
     }
 
-    @Override
-    public int getServerPort() {
-    	return ClassHelpers.normalizeToServerPort(server);
-    }
-
-    @Override
-    public String getLocalAddress() {
-		return ClassHelpers.normalizeToHostname( server);
-    }
+	@Override
+	public int getServerPort() {
+		return server != null ? server.getServerPort() : 25565;
+	}
+	@Override
+	public String getLocalAddress() {
+		return server != null ? server.getServerHostname() : "0.0.0.0";
+	}
 }
 *///?}

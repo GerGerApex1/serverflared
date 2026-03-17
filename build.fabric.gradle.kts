@@ -1,62 +1,117 @@
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import org.gradle.kotlin.dsl.named
+import xyz.wagyourtail.jvmdg.gradle.task.DowngradeJar
+import xyz.wagyourtail.jvmdg.gradle.task.ShadeJar
+import xyz.wagyourtail.unimined.internal.minecraft.task.RemapJarTaskImpl
+
 plugins {
 	id("mod-platform")
-	id("gg.essential.loom")
+	alias(libs.plugins.gradleup.shadow)
+	alias(libs.plugins.jvmdowngrader)
 }
-
+val javaCompileVersion: JavaVersion = when {
+	stonecutter.eval(stonecutter.current.version, ">=1.20.5") -> JavaVersion.VERSION_21
+	stonecutter.eval(stonecutter.current.version, ">=1.18") -> JavaVersion.VERSION_17
+	stonecutter.eval(stonecutter.current.version, ">=1.17") -> JavaVersion.VERSION_16
+	else -> JavaVersion.VERSION_1_8
+}
+stonecutter {
+	// These would be "1.21.11", "neoforge" for example
+	val (version, loader) = current.project.split('-', limit = 2)
+	properties.tags(version, loader)
+}
 platform {
 	loader = "fabric"
 	dependencies {
 		required("minecraft") {
-			versionRange = ">=${prop("deps.minecraft")} <${prop("deps.minecraft.maxVersion")}"
+			versionRange = ">=${prop("deps.minecraft.min")} <${prop("deps.minecraft.max")}"
+			environment = "server"
 		}
-		/*
 		required("fabric-api") {
 			slug("fabric-api")
-			versionRange = ">=${prop("deps.fabric-api")} <${prop("deps.fabric-api.maxVersion")} "
+			versionRange = ">=${prop("deps.fabric-api")}"
 		}
-		*/
 		required("fabricloader") {
-			versionRange = ">=0.12.0"
+			versionRange = ">=${property("fabric.loader")}"
+		}
+	}
+}
+unimined.minecraft {
+	version = prop("loader.minecraft")
+
+	mappings {
+		mojmap()
+	}
+
+	fabric {
+		loader("${property("fabric.loader")}")
+	}
+	side("server")
+	minecraftRemapper.config {
+		ignoreConflicts(true)
+	}
+	runs {
+		config("client") {
+
+		}
+		config("server") {
+			//workingDir("run/")
+			//name = "Fabric Server (${prop("deps.minecraft")})"
+		}
+	}
+}
+val shadowImpl by configurations.creating {
+	isCanBeResolved = true
+	isCanBeConsumed = false
+	extendsFrom(configurations.implementation.get())
+}
+val needDowngrade = JavaVersion.current() > javaCompileVersion
+afterEvaluate {
+	if (needDowngrade) {
+		tasks.named<RemapJarTaskImpl>("remapJar") {
+			dependsOn("shadeDowngradedApi")
+			inputFile.set(tasks.named<ShadeJar>("shadeDowngradedApi").flatMap { it.archiveFile })
+			archiveClassifier.set("")
+		}
+		tasks.named<DowngradeJar>("downgradeJar") {
+			inputFile.set(tasks.named<ShadowJar>("shadowJar").get().archiveFile)
+			archiveClassifier = "downgradedJar"
+			downgradeTo = javaCompileVersion
+		}
+		tasks.named<ShadeJar>("shadeDowngradedApi") {
+			dependsOn("downgradeJar")
+			inputFile.set(tasks.named<DowngradeJar>("downgradeJar").get().archiveFile)
+			archiveClassifier = "shadeDowngradedJar"
+		}
+	} else {
+		tasks.named<RemapJarTaskImpl>("remapJar") {
+			dependsOn("shadowJar")
+			inputFile.set(tasks.named<ShadowJar>("shadowJar").flatMap { it.archiveFile })
+			archiveClassifier.set("")
 		}
 	}
 }
 
-loom {
-	// accessWidenerPath = rootProject.file("src/main/resources/aw/${stonecutter.current.version}.accesswidener")
-	runs.named("client") {
-		client()
-		ideConfigGenerated(false)
-		runDir = "run/"
-		environment = "client"
-		programArgs("--username=Dev")
-		configName = "Fabric Client"
-	}
-	runs.named("server") {
-		server()
-		ideConfigGenerated(true)
-		runDir = "run/"
-		environment = "server"
-		configName = "Fabric Server (${prop("deps.minecraft")})"
-	}
+tasks.named<ShadowJar>("shadowJar") {
+	configurations = listOf(shadowImpl)
+
+	archiveClassifier.set("shadow")
+
+	relocate("com.fasterxml.jackson", "me.gergerapex1.shaded.fasterxml.jackson")
+	relocate("org.yaml.snakeyaml", "me.gergerapex1.shaded.org.yaml.snakeyaml")
+}
+
+val fabricLifecycleModule = fabricApi.fabricModule("fabric-lifecycle-events-v1", prop("deps.fabric-api"))
+val fabricBaseModule = fabricApi.fabricModule("fabric-api-base", prop("deps.fabric-api"))
+tasks.assemble {
+	dependsOn("remapJar")
 }
 dependencies {
-	minecraft("com.mojang:minecraft:${prop("deps.minecraft")}")
-	mappings(
-		loom.layered {
-			officialMojangMappings()
-			if (hasProperty("deps.parchment")) parchment("org.parchmentmc.data:parchment-${prop("deps.parchment")}@zip")
-		})
-	modImplementation(libs.fabric.loader)
-	modImplementation("net.fabricmc.fabric-api:fabric-api:${prop("deps.fabric-api")}")
-	include(libs.jackson.dataformat.yaml)
-	include(libs.jackson.databind)
-	include(libs.jackson.annotations)
-	include(libs.snakeyaml)
-	include(libs.jackson.core)
 	implementation(libs.jackson.core)
 	implementation(libs.jackson.dataformat.yaml)
 	implementation(libs.jackson.databind)
 	implementation(libs.jackson.annotations)
 	implementation(libs.snakeyaml)
-	//modLocalRuntime("com.terraformersmc:modmenu:${prop("deps.modmenu")}")
+	"modImplementation"(fabricLifecycleModule)
+	"modImplementation"(fabricBaseModule)
 }

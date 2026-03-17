@@ -9,6 +9,7 @@ import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -33,24 +34,23 @@ public class YamlHandler {
     }
 
     public <T> T readFromYaml(String filePath, Class<T> clazz) throws IOException {
-        try (BufferedReader reader = Files.newBufferedReader(Path.of(filePath))) {
+        try (BufferedReader reader = Files.newBufferedReader(Paths.get(filePath))) {
             return yamlMapper.readValue(reader, clazz);
         }
     }
     public <T> void writeToYaml(String filePath, T object) throws IOException {
-        try (BufferedWriter writer = Files.newBufferedWriter(Path.of(filePath), StandardCharsets.UTF_8)) {
+        try (BufferedWriter writer = Files.newBufferedWriter(Paths.get(filePath), StandardCharsets.UTF_8)) {
 
             Map<String, String> commentsByPath = new LinkedHashMap<>();
             collectComments(object, "", commentsByPath);
 
             String yamlString = yamlMapper.writerWithDefaultPrettyPrinter().writeValueAsString(object);
             String yamlWithComments = insertCommentsIntoYaml(yamlString, commentsByPath);
-            Constants.LOG.info(yamlString);
             writer.write(yamlWithComments);
         }
     }
     public <T> void overwriteFileWithYaml(String filePath, T object) throws IOException {
-        try (BufferedWriter writer = Files.newBufferedWriter(Path.of(filePath), StandardCharsets.UTF_8,
+        try (BufferedWriter writer = Files.newBufferedWriter(Paths.get(filePath), StandardCharsets.UTF_8,
             StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE)) {
 
             Map<String, String> commentsByPath = new LinkedHashMap<>();
@@ -105,7 +105,8 @@ public class YamlHandler {
         List<Entry<String, String>> entries = new ArrayList<>(commentsByPath.entrySet());
         entries.sort(Comparator.comparingInt(e -> -e.getKey().length()));
 
-        List<String> mutable = yaml.lines().collect(Collectors.toCollection(ArrayList::new));
+        // Java 8-compatible line splitting
+        List<String> mutable = splitLines(yaml);
 
         for (Map.Entry<String, String> e : entries) {
             String path = e.getKey();                // e.g. "server.host"
@@ -117,12 +118,12 @@ public class YamlHandler {
             boolean inserted = false;
             for (int i = 0; i < mutable.size(); i++) {
                 String line = mutable.get(i);
-                String stripped = line.stripLeading();
+                String stripped = stripLeading(line);
                 if (stripped.startsWith(lastKey + ":")) {
-                    int leading = line.length() - stripped.length();
+                    int leading = countLeadingSpaces(line);
                     if (leading == expectedIndent) {
-                        List<String> commentLines = Arrays.stream(commentText.split("\n"))
-                            .map(cl -> " ".repeat(expectedIndent) + "# " + cl)
+                        List<String> commentLines = Arrays.stream(splitLines(commentText).toArray(new String[0]))
+                            .map(cl -> repeat(" ", expectedIndent) + "# " + cl)
                             .collect(Collectors.toList());
                         mutable.addAll(i, commentLines);
                         inserted = true;
@@ -134,5 +135,44 @@ public class YamlHandler {
         }
 
         return String.join("\n", mutable);
+    }
+
+    // Helpers for Java 8 compatibility
+    private static List<String> splitLines(String s) {
+        // Preserve trailing empty line if present
+        String[] arr = s.split("\r?\n", -1);
+        return new ArrayList<>(Arrays.asList(arr));
+    }
+
+    private static String stripLeading(String s) {
+        int i = 0;
+        int len = s.length();
+        while (i < len) {
+            char c = s.charAt(i);
+            if (c == ' ' || c == '\t') {
+                i++;
+            } else {
+                break;
+            }
+        }
+        return s.substring(i);
+    }
+
+    private static int countLeadingSpaces(String s) {
+        int i = 0;
+        int len = s.length();
+        while (i < len && s.charAt(i) == ' ') {
+            i++;
+        }
+        return i;
+    }
+
+    private static String repeat(String str, int count) {
+        if (count <= 0) return "";
+        StringBuilder sb = new StringBuilder(str.length() * count);
+        for (int i = 0; i < count; i++) {
+            sb.append(str);
+        }
+        return sb.toString();
     }
 }

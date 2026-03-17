@@ -3,15 +3,13 @@ import org.jetbrains.kotlin.gradle.utils.property
 plugins {
 	alias(libs.plugins.stonecutter)
 	alias(libs.plugins.dotenv)
-	alias(libs.plugins.fabric.loom).apply(false)
-	alias(libs.plugins.neoforged.moddev).apply(false)
 	alias(libs.plugins.jsonlang.postprocess).apply(false)
 	alias(libs.plugins.mod.publish.plugin).apply(false)
 	alias(libs.plugins.kotlin.jvm).apply(false)
 	alias(libs.plugins.devtools.ksp).apply(false)
 	//alias(libs.plugins.fletching.table).apply(false)
-	alias(libs.plugins.legacyforge.moddev).apply(false)
 	alias(libs.plugins.gradleup.shadow).apply(false)
+	alias(libs.plugins.unimined).apply(false)
 }
 
 stonecutter active file(".sc_active_version")
@@ -51,22 +49,19 @@ stonecutter parameters {
 	val isLegacyForge = minorVersion?.let { it <= 12 } ?: false
 	constants["legacy_forge"] = isLegacyForge
 	constants["release"] = property("mod.id") != "modtemplate"
-
-	// 1.10.2 swap
-	swaps["mc_1_10_2_port"] = when {
-		current.parsed < "1.10" -> "return server.getPort();"
-		else -> "return server.getServerPort();"
-	}
-	swaps["mc_1_10_2_hostname"] = when {
-		current.parsed < "1.10" -> "return server.getHostname();"
-		else -> "return server.getServerHostname();"
-	}
-	//println(current.parsed >= "1.18")
-	replacements.string("forge_imports_modern", current.parsed >= "1.18") {
-		replace("net.minecraftforge.fml.event.server", "net.minecraftforge.event.server")
+	replacements.string(current.parsed > "1.18", "forge_imports_modern") {
 		replace("FMLServerStartedEvent", "ServerStartedEvent")
 		replace("FMLServerStartingEvent", "ServerStartingEvent")
 		replace("FMLServerStoppingEvent", "ServerStoppingEvent")
-		// remove FML from event names
+	}
+	swaps["fml_serverevents"] = when {
+		eval(current.version, ">=1.18") -> "import net.minecraftforge.event.server.*;"
+		eval(current.version, "~1.17") -> "import net.minecraftforge.fmlserverevents.*;"
+		else -> "import net.minecraftforge.fml.event.server.*;"
+	}
+	swaps["fml_serverlifecyclehooks_1_18"] = when {
+		eval(current.version, ">=1.18") -> "import net.minecraftforge.server.ServerLifecycleHooks;"
+		eval(current.version, "~1.17") -> "import net.minecraftforge.fmllegacy.server.ServerLifecycleHooks;"
+		else -> "import net.minecraftforge.fml.server.ServerLifecycleHooks;"
 	}
 }

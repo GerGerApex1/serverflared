@@ -17,16 +17,21 @@ pluginManagement {
 		}
 		maven("https://repo.essential.gg/repository/maven-public")
 		maven("https://repo.spongepowered.org/maven/")
+		maven("https://maven.wagyourtail.xyz/releases") { name = "WagYourTail" }
 	}
 	includeBuild("build-logic")
 }
 
 plugins {
 	id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
-	id("dev.kikugie.stonecutter") version "0.8.3"
+	id("dev.kikugie.stonecutter") version "0.9-beta.4"
 }
-
-val loaders = listOf("fabric" , "forge", "neoforge")
+buildscript {
+	dependencies {
+		classpath("org.apache.commons:commons-compress:1.27.1")
+	}
+}
+val loaders = listOf("forge", "fabric", "neoforge")
 val minecraftVersions = listOf(
 	"1.8.9",
 	"1.9",
@@ -35,6 +40,7 @@ val minecraftVersions = listOf(
 	"1.12",
 	// temporary phase out 1.13.2 support
 	//"1.13.2",
+	"1.17.1",
 	"1.14.4",
 	"1.15.2",
 	"1.16.5",
@@ -51,7 +57,7 @@ stonecutter {
 				for (loader in loaderList) {
 					val minorVersion = mcVersion.split(".").getOrNull(1)?.toIntOrNull()?: continue
 					if (!isSupported(minorVersion, loader)) continue
-
+					println("Adding version $mcVersion with loader $loader")
 					version("$mcVersion-$loader", mcVersion).buildscript = "build.$loader.gradle.kts"
 				}
 			}
