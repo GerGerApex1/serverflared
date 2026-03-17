@@ -47,11 +47,13 @@ jobs:
           args: --latest --strip header --output CHANGELOG.md
           version: 'v2.10.1'
 
-      - name: Read gradle.properties values
+      - name: Read gradle.properties & stonecutter.properties.toml values
         id: read-props
         run: |
-          VERSION=$(grep '^mod.version=' gradle.properties | cut -d'=' -f2)
-          CHANNEL_TAG=$(grep '^mod.channel_tag=' gradle.properties | cut -d'=' -f2)
+          VERSION=$(grep '^mod.version=' stonecutter.properties.toml | cut -d'=' -f2)
+          VERSION="${VERSION//\"/}"
+          CHANNEL_TAG=$(grep '^mod.channel_tag=' stonecutter.properties.toml | cut -d'=' -f2)
+          CHANNEL_TAG="${CHANNEL_TAG//\"/}"
           PUBLISH_GITHUB=$(grep '^publish.github=' gradle.properties | cut -d'=' -f2 || echo "false")
           FULL_VERSION="${VERSION}${CHANNEL_TAG}"
 
@@ -69,7 +71,7 @@ jobs:
 
           echo "Validating tag '$TAG' against version '$FULL_VERSION'..."
           if [[ "$TAG" != "$FULL_VERSION" ]]; then
-            echo "::error::Tag '$TAG' does not match version '$FULL_VERSION' in gradle.properties."
+            echo "::error::Tag '$TAG' does not match version '$FULL_VERSION' in stonecutter.properties.toml"
             echo "Deleting tag and release..."
 
             if gh release view "$TAG" &>/dev/null; then
