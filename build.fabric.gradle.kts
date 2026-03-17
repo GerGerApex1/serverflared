@@ -15,11 +15,16 @@ val javaCompileVersion: JavaVersion = when {
 	stonecutter.eval(stonecutter.current.version, ">=1.17") -> JavaVersion.VERSION_16
 	else -> JavaVersion.VERSION_1_8
 }
+stonecutter {
+	// These would be "1.21.11", "neoforge" for example
+	val (version, loader) = current.project.split('-', limit = 2)
+	properties.tags(version, loader)
+}
 platform {
 	loader = "fabric"
 	dependencies {
 		required("minecraft") {
-			versionRange = ">=${prop("deps.minecraft")} <${prop("deps.minecraft.maxVersion")}"
+			versionRange = ">=${prop("deps.minecraft.min")} <${prop("deps.minecraft.max")}"
 			environment = "server"
 		}
 		required("fabric-api") {
@@ -27,20 +32,19 @@ platform {
 			versionRange = ">=${prop("deps.fabric-api")}"
 		}
 		required("fabricloader") {
-			versionRange = ">=0.12.0"
+			versionRange = ">=${property("fabric.loader")}"
 		}
 	}
 }
-
 unimined.minecraft {
-	version = prop("deps.minecraft")
+	version = prop("loader.minecraft")
 
 	mappings {
 		mojmap()
 	}
 
 	fabric {
-		loader("0.12.0")
+		loader("${property("fabric.loader")}")
 	}
 	side("server")
 	minecraftRemapper.config {

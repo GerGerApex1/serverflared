@@ -1,4 +1,7 @@
+@file:OptIn(StonecutterExperimentalAPI::class)
+
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import dev.kikugie.stonecutter.StonecutterExperimentalAPI
 import xyz.wagyourtail.jvmdg.gradle.task.DowngradeJar
 import xyz.wagyourtail.jvmdg.gradle.task.ShadeJar
 import xyz.wagyourtail.unimined.internal.minecraft.task.RemapJarTaskImpl
@@ -8,8 +11,12 @@ plugins {
 	alias(libs.plugins.gradleup.shadow)
 	alias(libs.plugins.jvmdowngrader)
 }
-
-val minorVersion = prop("deps.minecraft").split(".")[1].toInt()
+stonecutter {
+	// These would be "1.21.11", "neoforge" for example
+	val (version, loader) = current.project.split('-', limit = 2)
+	properties.tags(version, loader)
+}
+val minorVersion = prop("loader.minecraft").split(".")[1].toInt()
 val javaCompileVersion: JavaVersion = when {
 	stonecutter.eval(stonecutter.current.version, ">=1.20.6") -> JavaVersion.VERSION_21
 	stonecutter.eval(stonecutter.current.version, ">=1.18") -> JavaVersion.VERSION_17
@@ -21,7 +28,7 @@ platform {
 	loader = "forge"
 	dependencies {
 		required("minecraft") {
-			forgeVersionRange =  "[${prop("deps.minecraft")}, ${prop("deps.minecraft.maxVersion")}]"
+			forgeVersionRange =  "[${prop("deps.minecraft.min")}, ${prop("deps.minecraft.max")}]"
 			environment = "server"
 		}
 		required("forge") {
@@ -30,26 +37,26 @@ platform {
 	}
 }
 unimined.minecraft {
-	version = prop("deps.minecraft")
+	version = prop("loader.minecraft")
 
 	mappings {
 		if (14 <= minorVersion) {
 			mojmap()
 		} else {
 			searge()
-			if (!(providers.gradleProperty("deps.mcp.channel").isPresent) || property("deps.mcp.channel") == "snapshot") {
-				mcp("snapshot", prop("deps.mcp"))
-			} else if (property("deps.mcp.channel") == "stable") {
-				mcp("stable", prop("deps.mcp"))
+			if (!(providers.gradleProperty("mappings.mcp.channel").isPresent) || property("mappings.mcp.channel") == "snapshot") {
+				mcp("snapshot", prop("mappings.mcp"))
+			} else if (property("mappings.mcp.channel") == "stable") {
+				mcp("stable", prop("mappings.mcp"))
 			} else {
-				error("Unknown MCP channel ${property("deps.mcp.channel")}")
+				error("Unknown MCP channel ${property("mappings.mcp.channel")}")
 			}
 		}
 	}
 
 	//side("server")
 	minecraftForge {
-		loader("${property("deps.forge")}")
+		loader("${property("loader.forge")}")
 	}
 
 	minecraftRemapper.config {
@@ -115,4 +122,3 @@ tasks.named<ShadowJar>("shadowJar") {
 tasks.assemble {
 	dependsOn("remapJar")
 }
-

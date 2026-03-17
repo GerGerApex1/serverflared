@@ -55,7 +55,7 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 		val modId = prop("mod.id")
 		val modVersion = prop("mod.version")
 		val channelTag = prop("mod.channel_tag")
-		val mcVersion = prop("deps.minecraft")
+		val mcVersion = prop("loader.minecraft")
 
 		val stonecutter = extensions.getByType<StonecutterBuildExtension>()
 

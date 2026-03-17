@@ -15,11 +15,17 @@ val javaCompileVersion: JavaVersion = when {
 	stonecutter.eval(stonecutter.current.version, ">=1.17") -> JavaVersion.VERSION_16
 	else -> JavaVersion.VERSION_1_8
 }
+stonecutter {
+	// These would be "1.21.11", "neoforge" for example
+	val (version, loader) = current.project.split('-', limit = 2)
+	properties.tags(version, loader)
+}
+
 platform {
 	loader = "neoforge"
 	dependencies {
 		required("minecraft") {
-			forgeVersionRange = "[${prop("deps.minecraft")}, ${prop("deps.minecraft.maxVersion")}]"
+			forgeVersionRange =  "[${prop("deps.minecraft.min")}, ${prop("deps.minecraft.max")}]"
 			environment = "server"
 		}
 		required("neoforge") {
@@ -30,14 +36,14 @@ platform {
 }
 
 unimined.minecraft {
-	version = prop("deps.minecraft")
+	version = prop("loader.minecraft")
 
 	mappings {
 		mojmap()
 	}
 
 	neoForge {
-		loader(prop("deps.neoforge"))
+		loader(prop("loader.neoforge"))
 	}
 
 	minecraftRemapper.config {
@@ -115,7 +121,6 @@ tasks.named<ShadowJar>("shadowJar") {
 tasks.assemble {
 	dependsOn("remapJar")
 }
-
 
 repositories {
 	maven {
