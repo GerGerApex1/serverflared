@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import me.gergerapex1.serverflared.Constants;
 
@@ -93,7 +94,12 @@ public class ProcessHandler {
         for (Process p : processes) {
             try {
                 p.destroy();
-                Constants.LOG.info("Terminated process: {}", p);
+				boolean isExited = p.waitFor(3, TimeUnit.SECONDS);
+				if(!isExited) {
+					p.destroyForcibly();
+					p.waitFor(2, TimeUnit.SECONDS);
+				}
+                Constants.LOG.info("Terminated process: {}", p.exitValue());
             } catch (Exception e) {
                 Constants.LOG.warn("Failed to terminate process: {}", p);
             }
