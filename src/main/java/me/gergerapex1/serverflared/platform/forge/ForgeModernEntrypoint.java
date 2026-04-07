@@ -27,6 +27,8 @@ public class ForgeModernEntrypoint {
         ServerFlared.cleanup();
     }
     @SubscribeEvent
-    public void serverStarted(ServerStartedEvent event) { ServerFlared.startedServer(); }
+    public void serverStarted(ServerStartedEvent event) {
+    	ServerFlared.startedServer();
+    }
 }
 *///?}

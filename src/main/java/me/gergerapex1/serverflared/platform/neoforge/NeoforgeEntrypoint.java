@@ -13,18 +13,19 @@ import me.gergerapex1.serverflared.ServerFlared;
 @Mod(Constants.MOD_ID)
 public class NeoforgeEntrypoint {
 	public NeoforgeEntrypoint() {
+        ModPlatformInstance.onInitialize();
         NeoForge.EVENT_BUS.addListener(NeoforgeEntrypoint::serverStarting);
         NeoForge.EVENT_BUS.addListener(NeoforgeEntrypoint::serverStopping);
 		NeoForge.EVENT_BUS.addListener(NeoforgeEntrypoint::serverStarted);
 	}
     private static void serverStarting(ServerStartingEvent event) {
-        ServerFlared.init();
-    	ModPlatformInstance.onInitialize();
-        ServerFlared.handleTunnel();
+    	ServerFlared.handleTunnel();
     }
     private static void serverStopping(ServerStoppingEvent event) {
         ServerFlared.cleanup();
     }
-    private static void serverStarted(ServerStartedEvent event) { ServerFlared.startedServer(); }
+    private static void serverStarted(ServerStartedEvent event) {
+    	ServerFlared.startedServer();
+    }
 }
 *///?}

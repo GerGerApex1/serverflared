@@ -16,12 +16,12 @@ import me.gergerapex1.serverflared.ServerFlared;
 public class ForgeLegacyEntrypoint {
 	@EventHandler
     public void init(FMLInitializationEvent event) {
+		ModPlatformInstance.onInitialize();
 		MinecraftForge.EVENT_BUS.register(this);
 		MinecraftForge.EVENT_BUS.register(ForgeLegacyPlatform.class);
 	}
 	@EventHandler
 	public void serverStarting(FMLServerStartingEvent event) {
-		ModPlatformInstance.onInitialize();
 		ServerFlared.handleTunnel();
 	}
 	@EventHandler
