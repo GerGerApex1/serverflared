@@ -2,6 +2,7 @@ package me.gergerapex1.serverflared;
 
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 import me.gergerapex1.serverflared.cloudflared.handler.CloudFlaredHandler;
 import me.gergerapex1.serverflared.cloudflared.handler.LocalManagedTunnel;
 import me.gergerapex1.serverflared.cloudflared.handler.TunnelInfo;
@@ -16,6 +17,9 @@ public class ServerFlared {
     private static CloudFlaredHandler handler;
     private static LocalManagedTunnel localHandler;
     private static boolean modDisabled = false;
+	private static final AtomicBoolean tunnelInitStarted = new AtomicBoolean(false);
+	private static volatile boolean pendingTunnelStart = false;
+	private static volatile boolean firstTimeMode = false;
     private static TunnelInfo info = new TunnelInfo();
     public static void init() {
         Constants.LOG.info("Initializing {}", Constants.MOD_FRIENDLY_NAME);
@@ -23,8 +27,10 @@ public class ServerFlared {
         handler = CloudFlaredHandler.createInstance();
         localHandler = new LocalManagedTunnel(handler);
         if (configManager.firstTime) {
+			firstTimeMode = true;
+			modDisabled = true;
             logFirstTimeSetup();
-            modDisabled = true;
+			firstTimeSetupAuthentication();
             return;
         }
         if (handler == null) {
@@ -35,10 +41,16 @@ public class ServerFlared {
         if (!handler.isAuthenticated()) {
             modDisabled = true;
             // Prevent mod from starting until authentication is done
-            CompletableFuture.runAsync(() -> handler.authenticate()).thenAccept(v -> {
-                Constants.LOG.info("Authentication completed, resuming mod operation.");
-                modDisabled = false;
-                handleTunnel();
+			handler.authenticate().thenAccept(v -> {
+				if(v) {
+					modDisabled = false;
+					Constants.LOG.info("Authentication completed, resuming mod operation.");
+					if(pendingTunnelStart) {
+						handleTunnel();
+					}
+				} else {
+					Constants.LOG.info("Authentication process went wrong");
+				}
             });
         }
     }
@@ -52,16 +64,44 @@ public class ServerFlared {
             + "and SUBDOMAIN (\"subdomain\") in the config file generated at {}", configPath.toString());
         Constants.LOG.info("If you have existing cloudflared tunnel or remotely managed tunnel, please configure the TUNNEL ID "
             + "(\"tunnelID\") instead");
-        Constants.LOG.info("After configuring the tunnel name, please restart the server.");
+        Constants.LOG.info("After configuring the tunnel name, please restart the server.\n");
+		if(!handler.isAuthenticated()) {
+			Constants.LOG.info("");
+			Constants.LOG.info("You also need to authenticate to cloudflared. A link will be displayed shortly.");
+			Constants.LOG.info("If you are running this in your host machine, a authentication link will be open automatically");
+		}
         Constants.LOG.info("Mod disabled.");
     }
-    public static void handleTunnel() {
-        if(modDisabled) {
-            return;
-        }
-        Constants.LOG.debug("Handling tunnel now...");
-        initiateTunnel();
-    }
+	// TODO: reusable code
+	private static void firstTimeSetupAuthentication() {
+		handler.authenticate().thenAccept(v -> {
+			if(v) {
+				Constants.LOG.info("Authentication completed, please configure the config file and restart the server");
+			} else {
+				Constants.LOG.info("Authentication process went wrong");
+			}
+		});
+	}
+	public static void handleTunnel() {
+		if (firstTimeMode) {
+			Constants.LOG.debug("First-time setup mode active; tunnel start skipped.");
+			return;
+		}
+
+		if (modDisabled) {
+			pendingTunnelStart = true;
+			Constants.LOG.debug("handleTunnel requested while mod disabled; deferring until authenticated.");
+			return;
+		}
+
+		if (!tunnelInitStarted.compareAndSet(false, true)) {
+			Constants.LOG.debug("Tunnel already initiated; skipping duplicate call.");
+			return;
+		}
+
+		Constants.LOG.debug("Handling tunnel now...");
+		initiateTunnel();
+	}
     public static void startedServer() {
         if(modDisabled) {
             return;
@@ -79,6 +119,7 @@ public class ServerFlared {
         localHandler.runLocalTunnel(info.getId());
     }
     private static void initiateTunnel() {
+		if(!handler.isAuthenticated()) return;
         // Check if tunnel exist with the config
         TunnelInfo initialTunnelInfo = new TunnelInfo();
         initialTunnelInfo.setName(configManager.CONFIG.getTunnelName());

@@ -11,6 +11,7 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
@@ -190,37 +191,67 @@ public class CloudFlaredHandler {
         }
         return false;
     }
-    public void authenticate() {
-        try {
-            Process process = processHandler.runAsync(new SubCommand(Constants.CMD_TUNNEL, Constants.CMD_LOGIN), null, null);
-            // Have it separately handle the output to catch the URL and check if authentication ends.
-            Thread processThread = new Thread(() -> {
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                    String line;
+	public CompletableFuture<Boolean> authenticate() {
+		CompletableFuture<Boolean> result = new CompletableFuture<>();
+		try {
+			Process process = processHandler.runAsync(
+					new SubCommand(Constants.CMD_TUNNEL, Constants.CMD_LOGIN),
+					line -> {
+						Matcher m = URL_REGEX.matcher(line);
+						if (m.matches()) {
+							Constants.LOG.info("Please authenticate cloudflared by visiting the following URL in your browser:");
+							Constants.LOG.info(m.group());
+							Constants.LOG.info("The program will open a browser window in the machine running this server.");
+							Constants.LOG.info("If you are running this server on a headless machine, please copy and paste the URL into a browser on another device.");
+						}
+					},
+					err -> Constants.LOG.error(err)
+			);
 
-                    while ((line = reader.readLine()) != null) {
-                        Matcher m = URL_REGEX.matcher(line);
-                        if (m.matches()) {
-                            Constants.LOG.info("Please authenticate cloudflared by visiting the following URL in your browser:");
-                            Constants.LOG.info(m.group());
-                            Constants.LOG.info("The program will open a browser window in the machine running this server.");
-                            Constants.LOG.info("If you are running this server on a headless machine, please copy and paste the URL into a browser on another device.");
-                        }
-                    }
-                    process.waitFor();
-                    Constants.LOG.info("Cloudflared authentication completed.");
-                } catch (IOException | InterruptedException e) {
-                    Constants.LOG.error("Authentication error", e);
-                }
-            }, "Cloudflared-Auth-Thread");
-            processThread.setDaemon(true);
-            processThread.start();
-        } catch (Exception e) {
-            Constants.LOG.error("Failed to start authentication", e);
-        }
-    }
+			Thread authShutdownHook = new Thread(() -> {
+				try {
+					if (process.isAlive()) {
+						process.destroy();
+						try {
+							process.waitFor();
+						} catch (InterruptedException ie) {
+							Thread.currentThread().interrupt();
+							process.destroyForcibly();
+						}
+					}
+				} catch (Exception e) {
+					Constants.LOG.debug("Failed to stop cloudflared auth process during shutdown", e);
+				}
+			}, "serverflared-auth-shutdown-hook");
 
-    public boolean validateTunnelExist(TunnelInfo info) {
+			Runtime.getRuntime().addShutdownHook(authShutdownHook);
+
+			CompletableFuture.runAsync(() -> {
+				try {
+					int exit = process.waitFor();
+					result.complete(exit == 0);
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+					if (process.isAlive()) {
+						process.destroyForcibly();
+					}
+					result.complete(false);
+				} finally {
+					try {
+						Runtime.getRuntime().removeShutdownHook(authShutdownHook);
+					} catch (IllegalStateException ignored) {
+					}
+				}
+			});
+		} catch (IOException e) {
+			Constants.LOG.error("Failed to start authentication", e);
+			result.complete(false);
+		}
+		return result;
+	}
+
+
+	public boolean validateTunnelExist(TunnelInfo info) {
         if(isDefaultTunnelUUID(info.getId())) return false;
         // Try with name first then id
         boolean exists = validateTunnelExist(info.getName());
