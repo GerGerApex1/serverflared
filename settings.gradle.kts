@@ -17,14 +17,16 @@ pluginManagement {
 		}
 		maven("https://repo.essential.gg/repository/maven-public")
 		maven("https://repo.spongepowered.org/maven/")
-		maven("https://maven.wagyourtail.xyz/releases") { name = "WagYourTail" }
+		maven("https://maven.wagyourtail.xyz/releases") { name = "WagYourTail Releases" }
+		maven("https://maven.wagyourtail.xyz/snapshots") { name = "WagYourTail Snapshots" }
+
 	}
 	includeBuild("build-logic")
 }
 
 plugins {
 	id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
-	id("dev.kikugie.stonecutter") version "0.9-beta.4"
+	id("dev.kikugie.stonecutter") version "0.9.4"
 }
 buildscript {
 	dependencies {
@@ -33,21 +35,7 @@ buildscript {
 }
 val loaders = listOf("forge", "fabric", "neoforge")
 val minecraftVersions = listOf(
-	"1.8.9",
-	"1.9",
-	"1.10",
-	"1.11",
-	"1.12",
-	// temporary phase out 1.13.2 support
-	//"1.13.2",
-	"1.17.1",
-	"1.14.4",
-	"1.15.2",
-	"1.16.5",
-	"1.18.2",
-	"1.19.2",
-	"1.20.2",
-	"1.21.1",
+	"26.1",
 )
 
 stonecutter {
@@ -56,7 +44,7 @@ stonecutter {
 			for (mcVersion in mcVersionList) {
 				for (loader in loaderList) {
 					val minorVersion = mcVersion.split(".").getOrNull(1)?.toIntOrNull()?: continue
-					if (!isSupported(minorVersion, loader)) continue
+					//if (!isSupported(minorVersion, loader)) continue
 					println("Adding version $mcVersion with loader $loader")
 					version("$mcVersion-$loader", mcVersion).buildscript = "build.$loader.gradle.kts"
 				}
@@ -64,10 +52,11 @@ stonecutter {
 		}
 
 		createVersionDirectory(minecraftVersions, loaders)
-		vcsVersion = "1.21.1-fabric"
+		vcsVersion = "26.1-forge"
 	}
 }
 fun isSupported(minorVersion: Int, loader: String): Boolean {
+
 	return when (loader) {
 		"fabric"   -> minorVersion >= 16
 		"neoforge" -> minorVersion >= 20

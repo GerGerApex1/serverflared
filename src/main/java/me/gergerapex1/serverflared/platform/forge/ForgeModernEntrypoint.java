@@ -3,14 +3,14 @@ package me.gergerapex1.serverflared.platform.forge;
 
 //? if forge && !legacy_forge  {
 /*import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.eventbus.api.listener.SubscribeEvent;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.common.Mod;
 import me.gergerapex1.serverflared.Constants;
 import me.gergerapex1.serverflared.ModPlatformInstance;
 import me.gergerapex1.serverflared.ServerFlared;
 //$ fml_serverevents
-import net.minecraftforge.fml.event.server.*
+import net.minecraftforge.event.server.*;
 @Mod(Constants.MOD_ID)
 public class ForgeModernEntrypoint {
 	public ForgeModernEntrypoint() {

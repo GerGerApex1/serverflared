@@ -1,5 +1,5 @@
 [versions]
-stonecutter = "0.9-beta.4"
+stonecutter = "0.9.4"
 stonecutter-postprocess = "2.1-beta.8"
 mod-publish = "1.1.0"
 dotenv-gradle = "4.0.0"
@@ -13,7 +13,7 @@ jackson = "2.15.2"
 shadow = "9.3.0"
 snakeyaml = "2.0"
 jvmdowngrader="1.3.6"
-unimined="1.4.1"
+unimined="1.4.2-SNAPSHOT"
 [libraries]
 kikugie-postprocess = { module = "dev.kikugie:postprocess", version.ref = "stonecutter-postprocess" }
 mod-publish-plugin = { module = "me.modmuss50:mod-publish-plugin", version.ref = "mod-publish" }

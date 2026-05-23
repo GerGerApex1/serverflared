@@ -46,7 +46,7 @@ stonecutter parameters {
 		.getOrNull(1)
 		?.toIntOrNull()
 
-	val isLegacyForge = minorVersion?.let { it <= 12 } ?: false
+	val isLegacyForge = false
 	constants["legacy_forge"] = isLegacyForge
 	constants["release"] = property("mod.id") != "modtemplate"
 	replacements.string(current.parsed > "1.18", "forge_imports_modern") {

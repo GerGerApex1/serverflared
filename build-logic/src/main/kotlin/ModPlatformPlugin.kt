@@ -31,7 +31,7 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 
 		val extension = extensions.create("platform", ModPlatformExtension::class.java).apply {
 			loader.convention(inferredLoader)
-			jarTask.convention("remapJar")
+			jarTask.convention("shadowJar")
 			sourcesJarTask.convention("sourcesJar")
 		}
 

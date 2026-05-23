@@ -10,7 +10,8 @@ plugins {
 	alias(libs.plugins.jvmdowngrader)
 }
 val javaCompileVersion: JavaVersion = when {
-	stonecutter.eval(stonecutter.current.version, ">=1.20.6") -> JavaVersion.VERSION_21
+	stonecutter.eval(stonecutter.current.version, ">=26.1") -> JavaVersion.VERSION_25
+	stonecutter.eval(stonecutter.current.version, ">=1.20.5") -> JavaVersion.VERSION_21
 	stonecutter.eval(stonecutter.current.version, ">=1.18") -> JavaVersion.VERSION_17
 	stonecutter.eval(stonecutter.current.version, ">=1.17") -> JavaVersion.VERSION_16
 	else -> JavaVersion.VERSION_1_8
@@ -38,10 +39,6 @@ platform {
 unimined.minecraft {
 	version = prop("loader.minecraft")
 
-	mappings {
-		mojmap()
-	}
-
 	neoForge {
 		loader(prop("loader.neoforge"))
 	}
@@ -58,8 +55,11 @@ unimined.minecraft {
 			//name = "NeoForge Server (${prop("deps.minecraft")})"
 		}
 	}
+
 }
+
 dependencies {
+
 	implementation(libs.jackson.dataformat.yaml)
 	implementation(libs.jackson.core)
 	implementation(libs.jackson.databind)
@@ -72,54 +72,18 @@ val shadowImpl by configurations.creating {
 	extendsFrom(configurations.implementation.get())
 }
 val needDowngrade = JavaVersion.current() > javaCompileVersion
-afterEvaluate {
-	if (needDowngrade) {
-
-		tasks.named<RemapJarTaskImpl>("remapJar") {
-			dependsOn("shadowJar")
-			inputFile.set(tasks.named<ShadowJar>("shadowJar").flatMap { it.archiveFile })
-			archiveClassifier.set("")
-		}
-
-		tasks.named<DowngradeJar>("downgradeJar") {
-			// keep as you had it
-			inputFile.set(tasks.named<RemapJarTaskImpl>("remapJar").flatMap { it.archiveFile })
-			archiveClassifier = "downgradedJar"
-			downgradeTo = javaCompileVersion
-		}
-
-		tasks.named<ShadeJar>("shadeDowngradedApi") {
-			//dependsOn("shadowJar")
-			//jvmdg.multiReleaseOriginal = false
-			//inputFile.set(tasks.named<ShadowJar>("shadowJar").flatMap { it.archiveFile })
-			archiveClassifier = "shadeDowngradedJar"
-		}
-
-		tasks.named<ShadowJar>("shadowJar") {
-			//dependsOn("downgradeJar")
-			//from(zipTree(tasks.named<ShadeJar>("shadeDowngradedApi").flatMap { it.archiveFile }))
-		}
-	} else {
-		tasks.named<RemapJarTaskImpl>("remapJar") {
-			dependsOn("shadowJar")
-			inputFile.set(tasks.named<ShadowJar>("shadowJar").flatMap { it.archiveFile })
-			archiveClassifier.set("")
-		}
-	}
-}
-
 tasks.named<ShadowJar>("shadowJar") {
 	//from(tasks.named<Jar>("remapJarSearge").flatMap { it.archiveFile })
 
 	configurations = listOf(shadowImpl)
 
-	archiveClassifier.set("shadow")
+	archiveClassifier.set("")
 
-	relocate("com.fasterxml.jackson", "me.gergerapex1.shaded.fasterxml.jackson")
-	relocate("org.yaml.snakeyaml", "me.gergerapex1.shaded.org.yaml.snakeyaml")
+	//relocate("com.fasterxml.jackson", "me.gergerapex1.shaded.fasterxml.jackson")
+	//relocate("org.yaml.snakeyaml", "me.gergerapex1.shaded.org.yaml.snakeyaml")
 }
 tasks.assemble {
-	dependsOn("remapJar")
+	dependsOn("shadowJar")
 }
 
 repositories {

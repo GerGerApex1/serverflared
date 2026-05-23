@@ -1,4 +1,4 @@
-name: Developmental Builds
+name: Developmental Builds - 26.X
 on: [ push, pull_request ]
 permissions:
   contents: read

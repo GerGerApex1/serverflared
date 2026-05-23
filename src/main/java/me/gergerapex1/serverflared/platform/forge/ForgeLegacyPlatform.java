@@ -12,7 +12,7 @@ import java.io.File;
 public class ForgeLegacyPlatform implements Platform {
 	@Override
 	public boolean isModLoaded(String modId) {
-		return Loader.isModLoaded(modId);
+		Loader.isModLoaded(modId);
 	}
 
 	private MinecraftServer server;
