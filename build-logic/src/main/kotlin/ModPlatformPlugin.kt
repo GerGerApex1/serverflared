@@ -307,7 +307,7 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 
 			modrinth(deps, currentVersion, additionalVersions, mrStaging, modrinthAccessToken)
 			// TODO: Add curseforge page
-			//if (!mrStaging) curseforge(deps, currentVersion, additionalVersions, false, curseforgeAccessToken)
+			if (!mrStaging) curseforge(deps, currentVersion, additionalVersions, false, curseforgeAccessToken)
 		}
 	}
 	/*
