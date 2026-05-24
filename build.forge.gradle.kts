@@ -1,5 +1,3 @@
-@file:OptIn(StonecutterExperimentalAPI::class)
-
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import dev.kikugie.stonecutter.StonecutterExperimentalAPI
 import xyz.wagyourtail.jvmdg.gradle.task.DowngradeJar
