@@ -306,8 +306,7 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 			displayName = "${prop("mod.name")} $modVersion ${loader.replaceFirstChar(Char::titlecase)} $currentVersion"
 
 			modrinth(deps, currentVersion, additionalVersions, mrStaging, modrinthAccessToken)
-			// TODO: Add curseforge page
-			//if (!mrStaging) curseforge(deps, currentVersion, additionalVersions, false, curseforgeAccessToken)
+			if (!mrStaging) curseforge(deps, currentVersion, additionalVersions, false, curseforgeAccessToken)
 		}
 	}
 	/*
