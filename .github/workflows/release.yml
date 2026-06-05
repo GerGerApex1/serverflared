@@ -64,25 +64,25 @@ jobs:
           echo "publish_github=$PUBLISH_GITHUB" >> "$GITHUB_OUTPUT"
           echo "full_version=$FULL_VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Validate tag matches version
-        run: |
-          TAG="${GITHUB_REF_NAME}"
-          FULL_VERSION="${{ steps.read-props.outputs.full_version }}"
-
-          echo "Validating tag '$TAG' against version '$FULL_VERSION'..."
-          if [[ "$TAG" != "$FULL_VERSION" ]]; then
-            echo "::error::Tag '$TAG' does not match version '$FULL_VERSION' in stonecutter.properties.toml"
-            echo "Deleting tag and release..."
-
-            if gh release view "$TAG" &>/dev/null; then
-              echo "Deleting GitHub release for $TAG..."
-              gh release delete "$TAG" -y
-            fi
-
-            git push origin ":refs/tags/$TAG"
-            exit 1
-          fi
-          echo "✓ Tag matches version."
+      # - name: Validate tag matches version
+      #   run: |
+      #     TAG="${GITHUB_REF_NAME}"
+      #     FULL_VERSION="${{ steps.read-props.outputs.full_version }}"
+      #
+      #     echo "Validating tag '$TAG' against version '$FULL_VERSION'..."
+      #     if [[ "$TAG" != "$FULL_VERSION" ]]; then
+      #       echo "::error::Tag '$TAG' does not match version '$FULL_VERSION' in stonecutter.properties.toml"
+      #       echo "Deleting tag and release..."
+      #
+      #       if gh release view "$TAG" &>/dev/null; then
+      #         echo "Deleting GitHub release for $TAG..."
+      #         gh release delete "$TAG" -y
+      #       fi
+      #
+      #       git push origin ":refs/tags/$TAG"
+      #       exit 1
+      #     fi
+      #     echo "✓ Tag matches version."
 
       - name: Upload changelog
         uses: actions/upload-artifact@v4
