@@ -171,7 +171,7 @@ loader.minecraft="26.1"
 deps.minecraft.min="26.1"
 deps.minecraft.max="26.1.2"
 
-publish.additionalVersions="26.1.2, 26.1.2"
+publish.additionalVersions="26.1.1, 26.1.2"
 
 ["26.1-fabric"]
 deps.fabric-api="0.144.0+26.1"
