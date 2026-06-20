@@ -2,7 +2,7 @@ mod.id="serverflared"
 mod.name="ServerFlared"
 mod.group="me.gergerapex1"
 mod.version="1.0.0"
-mod.channel_tag="-beta.3"
+mod.channel_tag="-beta.4"
 mod.authors="GerGerAypex1"
 mod.license="GPL3.0"
 mod.description="Allows you to expose your Minecraft server using automatic Cloudflare Tunnel setup."
@@ -165,3 +165,35 @@ loader.forge="52.1.8"
 
 ["1.21.1-neoforge"]
 loader.neoforge="216"
+
+["26.1"]
+loader.minecraft="26.1"
+deps.minecraft.min="26.1"
+deps.minecraft.max="26.1.2"
+
+publish.additionalVersions="26.1.2, 26.1.2"
+
+["26.1-fabric"]
+deps.fabric-api="0.144.0+26.1"
+
+["26.1-forge"]
+loader.forge="62.0.9"
+
+["26.1-neoforge"]
+loader.neoforge="0.19-beta"
+
+["26.2"]
+loader.minecraft="26.2"
+deps.minecraft.min="26.2"
+deps.minecraft.max="26.2"
+
+publish.additionalVersions=""
+
+["26.2-fabric"]
+deps.fabric-api="0.152.1+26.2"
+
+#["26.2-forge"]
+#loader.forge="52.1.8"
+
+["26.2-neoforge"]
+loader.neoforge="0.1-beta"

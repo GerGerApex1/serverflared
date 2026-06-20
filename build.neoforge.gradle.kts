@@ -8,6 +8,8 @@ plugins {
 	id("mod-platform")
 	alias(libs.plugins.gradleup.shadow)
 	alias(libs.plugins.jvmdowngrader)
+	alias(libs.plugins.unimined)
+
 }
 val javaCompileVersion: JavaVersion = when {
 	stonecutter.eval(stonecutter.current.version, ">=1.20.6") -> JavaVersion.VERSION_21

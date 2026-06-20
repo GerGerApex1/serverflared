@@ -8,6 +8,8 @@ plugins {
 	id("mod-platform")
 	alias(libs.plugins.gradleup.shadow)
 	alias(libs.plugins.jvmdowngrader)
+	alias(libs.plugins.unimined)
+
 }
 stonecutter {
 	// These would be "1.21.11", "neoforge" for example

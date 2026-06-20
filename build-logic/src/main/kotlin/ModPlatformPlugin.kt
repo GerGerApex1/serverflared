@@ -26,19 +26,20 @@ fun Project.envTrue(variable: String): Boolean = env(variable)?.toDefaultLowerCa
 
 abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 	override fun apply(project: Project) = with(project) {
-		val inferredLoader = project.buildFile.name.substringAfter('.').replace(".gradle.kts", "")
-		val inferredLoaderIsFabric = inferredLoader == "fabric"
+		val stonecutter = extensions.getByType<StonecutterBuildExtension>()
 
+		val inferredLoader = project.buildFile.name.substringAfter('.').replace(".gradle.kts", "")
+		val versionDeobfuscated = if (stonecutter.eval(stonecutter.current.version, ">=26.1"))  "shadowJar" else "remapJar"
 		val extension = extensions.create("platform", ModPlatformExtension::class.java).apply {
 			loader.convention(inferredLoader)
-			jarTask.convention("remapJar")
+			jarTask.convention(versionDeobfuscated)
 			sourcesJarTask.convention("sourcesJar")
 		}
 
 		listOf(
 			"org.jetbrains.kotlin.jvm",
 			"com.google.devtools.ksp",
-			"xyz.wagyourtail.unimined"
+			//	"xyz.wagyourtail.unimined"
 		).forEach { apply(plugin = it) }
 
 		afterEvaluate {
@@ -309,60 +310,6 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 			if (!mrStaging) curseforge(deps, currentVersion, additionalVersions, false, curseforgeAccessToken)
 		}
 	}
-	/*
-	private fun Project.configurePublishing(
-		ext: ModPlatformExtensionImpl,
-		loader: String,
-		stonecutter: StonecutterBuildExtension,
-		modVersion: String,
-		channelTag: String,
-		fullVersion: String,
-	) {
-		val additionalVersions = (findProperty("publish.additionalVersions") as String?)?.split(',')?.map(String::trim)
-			?.filter(String::isNotEmpty).orEmpty()
-
-		val releaseType = ReleaseType.of(
-			channelTag.substringAfter('-').substringBefore('.').ifEmpty { "stable" })
-
-		extensions.configure<ModPublishExtension>("publishMods") {
-			if (prop("dont.publish") == "true") {
-				println("Publishing is disabled for this project (dont.publish=true)")
-				return@configure
-			}
-			val mrStaging = envTrue("TEST_PUBLISHING_WITH_MR_STAGING")
-
-			val modrinthAccessToken = env("MODRINTH_API_TOKEN")
-			val curseforgeAccessToken = env("CURSEFORGE_API_TOKEN")
-			if (!envTrue("ENABLE_PUBLISHING")) {
-				dryRun = true
-			}
-			val currentVersion = stonecutter.current.version
-			val deps = ext.dependencies
-
-			if(loader.equals("forge")) {
-				//TODO: Implement shadowJar to conversion
-				val shadowJarTask = tasks.named("shadowJar").map { it as Jar }
-				file.set(shadowJarTask.flatMap { it.archiveFile })
-			} else {
-				val jarTask = tasks.named(ext.jarTask.get()).map { it as Jar }
-				file.set(jarTask.flatMap(Jar::getArchiveFile))
-			}
-			val srcJarTask = tasks.named(ext.sourcesJarTask.get()).map { it as Jar}
-
-			additionalFiles.from(srcJarTask.flatMap(Jar::getArchiveFile))
-			type = releaseType
-			version = fullVersion
-			changelog.set(rootProject.file("CHANGELOG.md").readText())
-			modLoaders.add(loader)
-
-			displayName = "${prop("mod.name")} $modVersion ${loader.replaceFirstChar(Char::titlecase)} $currentVersion"
-
-			modrinth(deps, currentVersion, additionalVersions, mrStaging, modrinthAccessToken)
-			// TODO: Add curseforge page
-			//if (!mrStaging) curseforge(deps, currentVersion, additionalVersions, false, curseforgeAccessToken)
-		}
-	}
-	*/
 	fun whenNotNull(stringProp: Property<String>, action: (String) -> Unit) {
 		if (!stringProp.orNull.isNullOrBlank()) action(stringProp.get())
 	}

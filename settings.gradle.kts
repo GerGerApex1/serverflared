@@ -17,7 +17,9 @@ pluginManagement {
 		}
 		maven("https://repo.essential.gg/repository/maven-public")
 		maven("https://repo.spongepowered.org/maven/")
-		maven("https://maven.wagyourtail.xyz/releases") { name = "WagYourTail" }
+		maven("https://maven.wagyourtail.xyz/releases") { name = "WagYourTail Releases" }
+		maven("https://maven.wagyourtail.xyz/snapshots") { name = "WagYourTail Releases" }
+
 	}
 	includeBuild("build-logic")
 }
@@ -49,28 +51,48 @@ val minecraftVersions = listOf(
 	"1.20.2",
 	"1.21.1",
 )
-
+// TODO: add 26.2 to lists once forge updates
+/*
+val deobfuscatedMinecraftVersions = listOf(
+	"26.1",
+	"26.2"
+)
+ */
 stonecutter {
 	create(rootProject) {
 		fun createVersionDirectory(mcVersionList: List<String>, loaderList: List<String>) {
 			for (mcVersion in mcVersionList) {
 				for (loader in loaderList) {
-					val minorVersion = mcVersion.split(".").getOrNull(1)?.toIntOrNull()?: continue
+					val minorVersion = mcVersion.split(".").getOrNull(1)?.toIntOrNull() ?: continue
 					if (!isSupported(minorVersion, loader)) continue
+
+
+					val buildScript = "build.$loader.gradle.kts"
+					version("$mcVersion-$loader", mcVersion).buildscript = buildScript
 					println("Adding version $mcVersion with loader $loader")
-					version("$mcVersion-$loader", mcVersion).buildscript = "build.$loader.gradle.kts"
 				}
 			}
 		}
+		fun createDeobfuscatedVersionDirectory(mcVersionList: List<String>, loaderList: List<String>) {
+			for (mcVersion in mcVersionList) {
+				for (loader in loaderList) {
+					val buildScript = "build.deobfuscated.gradle.kts"
+					version("$mcVersion-$loader", mcVersion).buildscript = buildScript
+					println("Adding deobfuscated version $mcVersion with loader $loader")
+				}
+			}
+		}
+		createDeobfuscatedVersionDirectory(listOf("26.1"), loaders)
+		createDeobfuscatedVersionDirectory(listOf("26.2"), listOf("fabric", "neoforge"))
 
 		createVersionDirectory(minecraftVersions, loaders)
 		vcsVersion = "1.21.1-fabric"
 	}
 }
-fun isSupported(minorVersion: Int, loader: String): Boolean {
-	return when (loader) {
-		"fabric"   -> minorVersion >= 16
+
+fun isSupported(minorVersion: Int, loader: String): Boolean =
+	when (loader) {
+		"fabric" -> minorVersion >= 16
 		"neoforge" -> minorVersion >= 20
-		else       -> true
+		else -> true
 	}
-}

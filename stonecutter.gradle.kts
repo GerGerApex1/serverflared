@@ -9,7 +9,7 @@ plugins {
 	alias(libs.plugins.devtools.ksp).apply(false)
 	//alias(libs.plugins.fletching.table).apply(false)
 	alias(libs.plugins.gradleup.shadow).apply(false)
-	alias(libs.plugins.unimined).apply(false)
+	//alias(libs.plugins.unimined).apply(false)
 }
 
 stonecutter active file(".sc_active_version")
@@ -34,6 +34,11 @@ stonecutter tasks {
 }
 
 stonecutter parameters {
+	val parts = node.metadata.version.split(".")
+	val majorVersion = parts[0].toInt()
+	val minorVersion = parts[1].toInt()
+	val isLegacyForge = majorVersion == 1 && minorVersion <= 12
+
 	constants.match(node.metadata.project.substringAfterLast('-'), "fabric", "neoforge", "forge")
 	filters.include("**/*.fsh", "**/*.vsh")
 	swaps["mod_version"] = "\"" + property("mod.version") + "\";"
@@ -41,18 +46,25 @@ stonecutter parameters {
 	swaps["mod_name"] = "\"" + property("mod.name") + "\";"
 	swaps["mod_group"] = "\"" + property("mod.group") + "\";"
 	swaps["minecraft"] = "\"" + node.metadata.version + "\";"
-	val minorVersion = node.metadata.version
-		.split(".")
-		.getOrNull(1)
-		?.toIntOrNull()
 
-	val isLegacyForge = minorVersion?.let { it <= 12 } ?: false
 	constants["legacy_forge"] = isLegacyForge
 	constants["release"] = property("mod.id") != "modtemplate"
 	replacements.string(current.parsed > "1.18", "forge_imports_modern") {
 		replace("FMLServerStartedEvent", "ServerStartedEvent")
 		replace("FMLServerStartingEvent", "ServerStartingEvent")
 		replace("FMLServerStoppingEvent", "ServerStoppingEvent")
+	}
+	swaps["fml_deobfuscated_subscribeevent"] = when {
+		eval(current.version, ">=26.1") -> "import net.minecraftforge.eventbus.api.listener.SubscribeEvent;"
+		else -> "import net.minecraftforge.eventbus.api.SubscribeEvent;"
+	}
+	swaps["fml_deobfuscated_isModLoaded"] = when {
+		eval(current.version, ">=26.1") -> "return ModList.isLoaded(modId);"
+		else -> "return ModList.get().isLoaded(modId);"
+	}
+	swaps["fml_deobfuscated_isDevelopmentEnvironment"] = when {
+		eval(current.version, ">=26.1") -> "return !FMLLoader.getCurrent().isProduction();"
+		else -> "return !FMLLoader.isProduction();"
 	}
 	swaps["fml_serverevents"] = when {
 		eval(current.version, ">=1.18") -> "import net.minecraftforge.event.server.*;"
