@@ -179,9 +179,7 @@ jobs:
           - 1.21.1-forge
           - 1.21.1-neoforge
           - 26.1-fabric
-          - 26.1-neoforge
           - 26.2-fabric
-          - 26.2-neoforge
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
