@@ -63,7 +63,6 @@ jobs:
           - 1.21.1-fabric
           - 1.21.1-forge
           - 1.21.1-neoforge
-          - 26.1-forge
           - 26.1-fabric
           - 26.1-neoforge
           - 26.2-fabric
