@@ -77,6 +77,13 @@ tasks.named<ShadowJar>("shadowJar") {
 tasks.assemble {
 	dependsOn("shadowJar")
 }
+repositories {
+	maven("https://maven.fabricmc.net/") { name = "Fabric" }
+	maven("https://maven.neoforged.net/releases/") { name = "NeoForged" }
+	maven("https://maven.minecraftforge.net/") { name = "Forge" }
+	maven("https://repo.spongepowered.org/maven/")
+
+}
 dependencies {
 	implementation(libs.jackson.core)
 	implementation(libs.jackson.dataformat.yaml)
@@ -93,6 +100,15 @@ dependencies {
 				prop("deps.fabric-api")
 			)
 		)
-		implementation(fabricApi.module("fabric-api-base", prop("deps.fabric-api")))
+		implementation(
+			fabricApi.module(
+				"fabric-api-base",
+				prop("deps.fabric-api")
+			)
+		)
+		implementation("net.fabricmc:fabric-loader:${property("fabric.loader")}")
+	}
+	if(mcLoader == "neoforge") {
+		"neoForge"("net.neoforged:neoforge:${prop("loader.minecraft")}.${prop("loader.neoforge")}")
 	}
 }

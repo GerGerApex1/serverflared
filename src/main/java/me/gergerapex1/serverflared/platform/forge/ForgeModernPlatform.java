@@ -14,6 +14,7 @@ public class ForgeModernPlatform implements Platform {
 	private static MinecraftServer serverHook = ServerLifecycleHooks.getCurrentServer();
 	@Override
 	public boolean isModLoaded(String modId) {
+		//$ fml_deobfuscated_isModLoaded
 		return ModList.get().isLoaded(modId);
 	}
     @Override

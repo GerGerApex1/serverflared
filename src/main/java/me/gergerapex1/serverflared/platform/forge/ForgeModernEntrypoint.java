@@ -3,6 +3,7 @@ package me.gergerapex1.serverflared.platform.forge;
 
 //? if forge && !legacy_forge  {
 /*import net.minecraftforge.common.MinecraftForge;
+//$ fml_deobfuscated_subscribeevent
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.common.Mod;

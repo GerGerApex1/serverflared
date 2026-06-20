@@ -82,7 +82,7 @@ stonecutter {
 				}
 			}
 		}
-		createDeobfuscatedVersionDirectory(listOf("26.1"), loaders)
+		createDeobfuscatedVersionDirectory(listOf("26.1"), listOf("fabric", "neoforge"))
 		createDeobfuscatedVersionDirectory(listOf("26.2"), listOf("fabric", "neoforge"))
 
 		createVersionDirectory(minecraftVersions, loaders)
