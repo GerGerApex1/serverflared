@@ -10,6 +10,7 @@ val (version, mcLoader) = stonecutter.current.project.split('-', limit = 2)
 stonecutter {
 	properties.tags(version, mcLoader)
 }
+java.toolchain.languageVersion = JavaLanguageVersion.of(25)
 platform {
 	loader = mcLoader
 	dependencies {
