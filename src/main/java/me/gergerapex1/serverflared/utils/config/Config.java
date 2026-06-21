@@ -1,22 +1,26 @@
 package me.gergerapex1.serverflared.utils.config;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import java.util.UUID;
 import me.gergerapex1.serverflared.utils.config.annonations.Comment;
 
 public class Config{
+	private int version = 2;
     @Comment("The ID of the Cloudflare tunnel.")
     private String tunnelId = new UUID(0, 0).toString();
     @Comment("The name of the Cloudflare tunnel.")
     private String tunnelName = "serverflared-tunnel";
-    @Comment("The subdomain to use from the domain. Example, \"subdomain\" for will use subdomain.yourdomain.com if you authenticated the domain yourdomain.com.\nIf you used incorrect domain, the tunnel will set subdomian.wrongdomain.com.domain.com")
-    private String subdomain = "subdomain.example.com";
-    
-    public String getSubdomain() {
-        return subdomain;
+	@JsonAlias("subdomain")
+	@Comment("The full hostname for your Cloudflare tunnel (e.g., \"minecraft.yourdomain.net\" or \"yourdomain.net\"). "
+			+ "Your domain must be valid & authenticated in your Cloudflare account")
+    private String hostName = "minecraftsubdomain.yourdomain.net";
+
+    public String getHostName() {
+        return hostName;
     }
 
-    public void setSubdomain(String subdomain) {
-        this.subdomain = subdomain;
+    public void setHostName(String hostName) {
+        this.hostName = hostName;
     }
 
     public String getTunnelId() {
@@ -34,4 +38,12 @@ public class Config{
     public void setTunnelName(String tunnelName) {
         this.tunnelName = tunnelName;
     }
+
+	public int getVersion() {
+		return version;
+	}
+
+	public void setVersion(int version) {
+		this.version = version;
+	}
 }

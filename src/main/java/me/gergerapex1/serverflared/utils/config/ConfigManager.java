@@ -5,6 +5,7 @@ import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Map;
 import me.gergerapex1.serverflared.Constants;
 import me.gergerapex1.serverflared.ModPlatformInstance;
 
@@ -17,6 +18,7 @@ public class ConfigManager {
         Path configFilePath = getConfigFilePath();
         try {
             createConfigFileIfNotExist(configFilePath);
+			migrateConfigFile(configFilePath);
 
             try {
                 CONFIG = handler.readFromYaml(configFilePath.toString(), Config.class);
@@ -34,7 +36,30 @@ public class ConfigManager {
             Constants.LOG.error("Failed to load config: {}", e.getMessage());
         }
     }
+	private void migrateConfigFile(Path configFilePath) throws IOException {
+		Map<String, Object> data = handler.readFromYaml(configFilePath.toString(), Map.class);
 
+		boolean migrated = false;
+
+		// Rename old key to new key
+		if (data.containsKey("subdomain")) {
+			data.put("hostName", data.remove("subdomain"));
+			migrated = true;
+		}
+
+		// Add new required fields if missing
+		if (!data.containsKey("version")) {
+			data.put("version", 2);
+			migrated = true;
+		}
+
+		if (migrated) {
+			// Rewrite file with migrated keys AND regenerated comments
+			Config tempConfig = handler.readFromYaml(configFilePath.toString(), Config.class);
+			handler.writeToYaml(configFilePath.toString(), tempConfig);
+			Constants.LOG.debug("Config migrated and comments regenerated");
+		}
+	}
     public void saveConfig() {
         Path configFilePath = getConfigFilePath();
         try {

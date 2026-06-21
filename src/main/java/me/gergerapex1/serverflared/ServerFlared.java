@@ -134,7 +134,7 @@ public class ServerFlared {
                 Constants.LOG.error("Failed to create tunnel for name {} and ID {}. Aborting tunnel initiation.", initialTunnelInfo.getName(), initialTunnelInfo.getId());
                 return;
             }
-            localHandler.routeDnsToTunnel(createdTunnel.getId(), configManager.CONFIG.getSubdomain());
+            localHandler.routeDnsToTunnel(createdTunnel.getId(), configManager.CONFIG.getHostName());
 
             updateConfigWithTunnelInfo(createdTunnel);
 

@@ -61,8 +61,8 @@ public class LocalManagedTunnel {
             return null;
         }
     }
-    public void routeDnsToTunnel(String tunnelNameOrName, String routeDnsDomain) {
-        executor.run(new SubCommand(Constants.CMD_TUNNEL, Constants.CMD_ROUTE, Constants.CMD_DNS, tunnelNameOrName, routeDnsDomain), null, null);
+    public void routeDnsToTunnel(String tunnelName, String routeDnsDomain) {
+        executor.run(new SubCommand(Constants.CMD_TUNNEL, Constants.CMD_ROUTE, Constants.CMD_DNS, tunnelName, routeDnsDomain), null, null);
     }
 
     public void runLocalTunnel(String tunnelIdOrName) {
