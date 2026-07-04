@@ -1,8 +1,10 @@
 @file:Suppress("unused", "DuplicatedCode")
 
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import dev.kikugie.stonecutter.build.StonecutterBuildExtension
 import me.modmuss50.mpp.ModPublishExtension
 import me.modmuss50.mpp.ReleaseType
+import net.fabricmc.loom.task.RemapJarTask
 import org.gradle.api.JavaVersion
 import org.gradle.api.NamedDomainObjectContainer
 import org.gradle.api.Plugin
@@ -17,6 +19,10 @@ import org.gradle.language.jvm.tasks.ProcessResources
 import org.gradle.plugins.ide.idea.model.IdeaModel
 import java.util.*
 import javax.inject.Inject
+import org.gradle.jvm.toolchain.JavaLanguageVersion
+import xyz.wagyourtail.jvmdg.ClassDowngrader.downgradeTo
+import xyz.wagyourtail.jvmdg.gradle.task.DowngradeJar
+import xyz.wagyourtail.jvmdg.gradle.task.ShadeJar
 
 fun Project.prop(name: String): String = (findProperty(name) ?: "") as String
 
@@ -29,21 +35,36 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 		val stonecutter = extensions.getByType<StonecutterBuildExtension>()
 
 		val inferredLoader = project.buildFile.name.substringAfter('.').replace(".gradle.kts", "")
-		val versionDeobfuscated = if (stonecutter.eval(stonecutter.current.version, ">=26.1"))  "shadowJar" else "remapJar"
+		val versionDeobfuscated =
+			if (stonecutter.eval(
+					stonecutter.current.version,
+					">=26.1"
+				)
+			) "shadowJar" else "shadowJar"
+		val needDowngrade = JavaVersion.current() > resolveJavaVersion()
+
 		val extension = extensions.create("platform", ModPlatformExtension::class.java).apply {
 			loader.convention(inferredLoader)
 			jarTask.convention(versionDeobfuscated)
 			sourcesJarTask.convention("sourcesJar")
 		}
-
 		listOf(
 			"org.jetbrains.kotlin.jvm",
 			"com.google.devtools.ksp",
+			"xyz.wagyourtail.jvmdowngrader",
+			"com.gradleup.shadow"
 			//	"xyz.wagyourtail.unimined"
 		).forEach { apply(plugin = it) }
-
+		createShadowImplConfiguration()
 		afterEvaluate {
 			configureProject(extension)
+			if(!stonecutter.eval(stonecutter.current.version, ">=26.1")) {
+				if (needDowngrade) {
+					configureManagedDowngrade()
+				} else {
+					configureDirectRemap()
+				}
+			}
 		}
 	}
 
@@ -78,16 +99,36 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 		)
 
 		if (isFabric) {
-			extension.dependencies { required("java") { versionRange = ">=${extension.requiredJava.get().majorVersion}" } }
+			extension.dependencies {
+				required("java") {
+					versionRange = ">=${extension.requiredJava.get().majorVersion}"
+				}
+			}
 		}
 
 		// configureFletchingTable()
 		configureJarTask(modId)
 		configureIdea()
-		configureProcessResources(isFabric, isNeoForge, isForge, modId, "$modVersion$channelTag", mcVersion, extension, extension.requiredJava.get())
+		configureProcessResources(
+			isFabric,
+			isNeoForge,
+			isForge,
+			modId,
+			"$modVersion$channelTag",
+			mcVersion,
+			extension,
+			extension.requiredJava.get()
+		)
 		configureJava(stonecutter, extension.requiredJava.get())
 		registerBuildAndCollectTask(extension, "$modVersion$channelTag")
-		configurePublishing(extension, loader, stonecutter, "$modVersion$channelTag", channelTag, version.toString())
+		configurePublishing(
+			extension,
+			loader,
+			stonecutter,
+			"$modVersion$channelTag",
+			channelTag,
+			version.toString()
+		)
 	}
 
 	private fun Project.configureJarTask(modId: String) {
@@ -146,24 +187,41 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 				isFabric -> {
 					filesMatching("fabric.mod.json") {
 						expand(props)
-						filter {
-							line -> line.replace(
+						filter { line ->
+							line.replace(
 								"\"dependencies\": {}",
-							dependencies
+								dependencies
 							)
 						}
 					}
-					exclude("META-INF/mods.toml", "META-INF/neoforge.mods.toml", "aw/*.cfg", ".cache", "pack.mcmeta")
+					exclude(
+						"META-INF/mods.toml",
+						"META-INF/neoforge.mods.toml",
+						"aw/*.cfg",
+						".cache",
+						"pack.mcmeta"
+					)
 				}
 
 				isNeoForge -> {
 					filesMatching("META-INF/neoforge.mods.toml") { expand(props) }
-					exclude("META-INF/mods.toml", "fabric.mod.json", "aw/*.accesswidener", ".cache", "pack.mcmeta")
+					exclude(
+						"META-INF/mods.toml",
+						"fabric.mod.json",
+						"aw/*.accesswidener",
+						".cache",
+						"pack.mcmeta"
+					)
 				}
 
 				isForge -> {
 					filesMatching("META-INF/mods.toml") { expand(props) }
-					exclude("META-INF/neoforge.mods.toml", "fabric.mod.json", "aw/*.accesswidener", ".cache")
+					exclude(
+						"META-INF/neoforge.mods.toml",
+						"fabric.mod.json",
+						"aw/*.accesswidener",
+						".cache"
+					)
 				}
 			}
 		}
@@ -215,7 +273,10 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 		}
 	}
 
-	private fun Project.configureJava(stonecutter: StonecutterBuildExtension, requiredJava: JavaVersion) {
+	private fun Project.configureJava(
+		stonecutter: StonecutterBuildExtension,
+		requiredJava: JavaVersion
+	) {
 		extensions.configure<JavaPluginExtension>("java") {
 			withSourcesJar()
 			withJavadocJar()
@@ -243,7 +304,10 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 	}
 	*/
 
-	private fun Project.registerBuildAndCollectTask(extension: ModPlatformExtension, modVersion: String) {
+	private fun Project.registerBuildAndCollectTask(
+		extension: ModPlatformExtension,
+		modVersion: String
+	) {
 		tasks.register<Copy>("buildAndCollect") {
 			group = "build"
 			from(
@@ -264,8 +328,9 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 		channelTag: String,
 		fullVersion: String,
 	) {
-		val additionalVersions = (findProperty("publish.additionalVersions") as String?)?.split(',')?.map(String::trim)
-			?.filter(String::isNotEmpty).orEmpty()
+		val additionalVersions =
+			(findProperty("publish.additionalVersions") as String?)?.split(',')?.map(String::trim)
+				?.filter(String::isNotEmpty).orEmpty()
 
 		val releaseType = ReleaseType.of(
 			channelTag.substringAfter('-').substringBefore('.').ifEmpty { "stable" })
@@ -288,7 +353,7 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 			val currentVersion = stonecutter.current.version
 			val deps = ext.dependencies
 
-			if(loader == "forge") {
+			if (loader == "forge") {
 				//TODO: Implement shadowJar to conversion
 				val shadowJarTask = tasks.named("shadowJar").map { it as Jar }
 				file.set(shadowJarTask.flatMap { it.archiveFile })
@@ -296,7 +361,7 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 				val jarTask = tasks.named(ext.jarTask.get()).map { it as Jar }
 				file.set(jarTask.flatMap(Jar::getArchiveFile))
 			}
-			val srcJarTask = tasks.named(ext.sourcesJarTask.get()).map { it as Jar}
+			val srcJarTask = tasks.named(ext.sourcesJarTask.get()).map { it as Jar }
 
 			additionalFiles.from(srcJarTask.flatMap(Jar::getArchiveFile))
 			type = releaseType
@@ -304,12 +369,20 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 			changelog.set(rootProject.file("CHANGELOG.md").readText())
 			modLoaders.add(loader)
 
-			displayName = "${prop("mod.name")} $modVersion ${loader.replaceFirstChar(Char::titlecase)} $currentVersion"
+			displayName =
+				"${prop("mod.name")} $modVersion ${loader.replaceFirstChar(Char::titlecase)} $currentVersion"
 
 			modrinth(deps, currentVersion, additionalVersions, mrStaging, modrinthAccessToken)
-			if (!mrStaging) curseforge(deps, currentVersion, additionalVersions, false, curseforgeAccessToken)
+			if (!mrStaging) curseforge(
+				deps,
+				currentVersion,
+				additionalVersions,
+				false,
+				curseforgeAccessToken
+			)
 		}
 	}
+
 	fun whenNotNull(stringProp: Property<String>, action: (String) -> Unit) {
 		if (!stringProp.orNull.isNullOrBlank()) action(stringProp.get())
 	}
@@ -349,5 +422,88 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 		deps.optional.forEach { dep -> whenNotNull(dep.curseforge) { optional(it) } }
 		deps.incompatible.forEach { dep -> whenNotNull(dep.curseforge) { incompatible(it) } }
 		deps.embeds.forEach { dep -> whenNotNull(dep.curseforge) { embeds(it) } }
+	}
+
+	private fun Project.configureManagedDowngrade() {
+		project.tasks.named<RemapJarTask>("remapJar") {
+			dependsOn("shadeDowngradedApi")
+			inputFile.set(tasks.named<ShadeJar>("shadeDowngradedApi").flatMap { it.archiveFile })
+			archiveClassifier.set("")
+		}
+
+		project.tasks.named<RemapJarTask>("remapJar") {
+			dependsOn("shadeDowngradedApi")
+			inputFile.set(tasks.named<ShadeJar>("shadeDowngradedApi").flatMap { it.archiveFile })
+			archiveClassifier.set("")
+		}
+
+		project.tasks.named<DowngradeJar>("downgradeJar") {
+			inputFile.set(tasks.named<ShadowJar>("shadowJar").get().archiveFile)
+			archiveClassifier = "downgradedJar"
+			downgradeTo = (extensions.extraProperties.get("javaCompileVersion") as JavaVersion)
+		}
+
+		project.tasks.named<ShadeJar>("shadeDowngradedApi") {
+			dependsOn("downgradeJar")
+			inputFile.set(tasks.named<DowngradeJar>("downgradeJar").get().archiveFile)
+			archiveClassifier = "shadeDowngradedJar"
+		}
+	}
+
+	private fun Project.configureDirectRemap() {
+		pluginManager.withPlugin("gg.essential.loom") {
+			tasks.named<RemapJarTask>("remapJar") {
+				dependsOn("shadowJar")
+				inputFile.set(tasks.named<ShadowJar>("shadowJar").flatMap { it.archiveFile })
+				archiveClassifier.set("")
+			}
+		}
+	}
+
+	fun Project.configureShadowJar() {
+		pluginManager.withPlugin("com.gradleup.shadow") {
+			tasks.named<ShadowJar>("shadowJar") {
+				relocate("com.fasterxml.jackson", "me.gergerapex1.shaded.fasterxml.jackson")
+				relocate("org.yaml.snakeyaml", "me.gergerapex1.shaded.org.yaml.snakeyaml")
+				archiveClassifier.set("shadow")
+			}
+		}
+	}
+
+	fun Project.createShadowImplConfiguration() {
+		val shadowImpl = configurations.maybeCreate("shadowImpl").apply {
+			isCanBeResolved = true
+			isCanBeConsumed = false
+			extendsFrom(configurations.getByName("implementation"))
+		}
+
+		tasks.named<ShadowJar>("shadowJar") {
+			configurations = listOf(shadowImpl)
+		}
+	}
+
+	fun Project.resolveJavaVersion(): JavaVersion {
+		val stonecutter = extensions.getByType<StonecutterBuildExtension>()
+		return when {
+			stonecutter.eval(stonecutter.current.version, ">=26.1") -> JavaVersion.VERSION_25
+			stonecutter.eval(stonecutter.current.version, ">=1.20.6") -> JavaVersion.VERSION_21
+			stonecutter.eval(stonecutter.current.version, ">=1.20.5") -> JavaVersion.VERSION_21
+			stonecutter.eval(stonecutter.current.version, ">=1.18") -> JavaVersion.VERSION_17
+			stonecutter.eval(stonecutter.current.version, ">=1.17") -> JavaVersion.VERSION_16
+			else -> JavaVersion.VERSION_1_8
+		}
+	}
+
+	fun Project.resolveJavaLanguageVersion(): JavaLanguageVersion {
+		val stonecutter = extensions.getByType<StonecutterBuildExtension>()
+
+		return when {
+			stonecutter.eval(stonecutter.current.version, ">=26.1") -> JavaLanguageVersion.of(25)
+			stonecutter.eval(stonecutter.current.version, ">=1.20.6") -> JavaLanguageVersion.of(21)
+			stonecutter.eval(stonecutter.current.version, ">=1.20.5") -> JavaLanguageVersion.of(21)
+			stonecutter.eval(stonecutter.current.version, ">=1.18") -> JavaLanguageVersion.of(17)
+			stonecutter.eval(stonecutter.current.version, ">=1.17") -> JavaLanguageVersion.of(16)
+			else -> JavaLanguageVersion.of(8)
+		}
 	}
 }

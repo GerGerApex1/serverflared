@@ -20,6 +20,9 @@ repositories {
 	maven("https://maven.kikugie.dev/snapshots") { name = "KikuGie Snapshots" }
 	maven("https://maven.kikugie.dev/releases") { name = "KikuGie Releases" }
 	maven("https://jitpack.io") { name = "Jitpack" }
+	maven("https://repo.essential.gg/public")
+	maven("https://maven.architectury.dev/") { name = "Architectury" }
+
 }
 
 dependencies {
@@ -27,5 +30,8 @@ dependencies {
 	implementation(libs.kikugie.stonecutter)
 	implementation(libs.mod.publish.plugin)
 	implementation(libs.foojay.resolver)
+	implementation("com.gradleup.shadow:shadow-gradle-plugin:9.3.0")
+	implementation(libs.jvmdowngrader)
+	implementation(libs.architectury.loom)
 	//implementation(libs.fletching.table)
 }

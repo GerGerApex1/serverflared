@@ -61,14 +61,7 @@ if (mcLoader == "neoForge") {
 
 }
 */
-val shadowImpl by configurations.creating {
-	isCanBeResolved = true
-	isCanBeConsumed = false
-	extendsFrom(configurations.implementation.get())
-}
 tasks.named<ShadowJar>("shadowJar") {
-	configurations = listOf(shadowImpl)
-
 	archiveClassifier.set("shadow")
 
 	relocate("com.fasterxml.jackson", "me.gergerapex1.shaded.fasterxml.jackson")
@@ -110,6 +103,6 @@ dependencies {
 		implementation("net.fabricmc:fabric-loader:${property("fabric.loader")}")
 	}
 	if(mcLoader == "neoforge") {
-		"neoForge"("net.neoforged:neoforge:${prop("loader.minecraft")}.${prop("loader.neoforge")}")
+		"neoForge"("net.neoforged:neoforge:${prop("loader.neoforge")}")
 	}
 }
