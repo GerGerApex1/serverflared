@@ -440,7 +440,7 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 		project.tasks.named<DowngradeJar>("downgradeJar") {
 			inputFile.set(tasks.named<ShadowJar>("shadowJar").get().archiveFile)
 			archiveClassifier = "downgradedJar"
-			downgradeTo = (extensions.extraProperties.get("javaCompileVersion") as JavaVersion)
+			downgradeTo = resolveJavaVersion()
 		}
 
 		project.tasks.named<ShadeJar>("shadeDowngradedApi") {
