@@ -36,11 +36,6 @@ loom {
 		}
 	}
 }
-val shadowImpl by configurations.creating {
-	isCanBeResolved = true
-	isCanBeConsumed = false
-	extendsFrom(configurations.implementation.get())
-}
 dependencies {
 	// implementation(libs.jackson.core)
 	// implementation(libs.jackson.dataformat.yaml)
