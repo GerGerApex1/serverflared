@@ -7,7 +7,6 @@ import me.gergerapex1.serverflared.platform.Platform;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.server.MinecraftServer;
-
 public class FabricPlatform implements Platform {
 
 	@Override
@@ -38,12 +37,20 @@ public class FabricPlatform implements Platform {
 
 	@Override
 	public Path getGameDirectory() {
+		//? if ~ 1.16 {
+		/*return FabricLoader.getInstance().getGameDirectory().toPath();
+		*///? } else {
 		return FabricLoader.getInstance().getGameDir();
+		//?}
 	}
 
 	@Override
 	public Path getConfigDirectory() {
+		//? if ~ 1.16 {
+		/*return FabricLoader.getInstance().getConfigDirectory().toPath();
+		*///? } else {
 		return FabricLoader.getInstance().getConfigDir();
+		 //?}
 	}
 
 	@Override

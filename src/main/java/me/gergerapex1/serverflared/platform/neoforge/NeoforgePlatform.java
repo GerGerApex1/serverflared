@@ -22,7 +22,11 @@ public class NeoforgePlatform implements Platform {
 
     @Override
     public boolean isDevelopmentEnvironment() {
-        return !FMLLoader.isProduction();
+		//? if >= 26 {
+		/^return !FMLLoader.getCurrent().isProduction();
+		^///? } else {
+		return !FMLLoader.isProduction();
+		//?}
     }
 
     @Override

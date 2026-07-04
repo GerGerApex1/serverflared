@@ -90,12 +90,7 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 		version = "$modVersion$channelTag+$mcVersion-$loader"
 
 		extension.requiredJava.set(
-			when {
-				stonecutter.eval(stonecutter.current.version, ">=1.20.6") -> JavaVersion.VERSION_21
-				stonecutter.eval(stonecutter.current.version, ">=1.18") -> JavaVersion.VERSION_17
-				stonecutter.eval(stonecutter.current.version, ">=1.17") -> JavaVersion.VERSION_16
-				else -> JavaVersion.VERSION_1_8
-			}
+			resolveJavaVersion()
 		)
 
 		if (isFabric) {

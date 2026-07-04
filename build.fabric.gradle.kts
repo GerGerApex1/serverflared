@@ -7,8 +7,8 @@ plugins {
 	alias(libs.plugins.jvmdowngrader)
 	alias(libs.plugins.architectury.loom)
 }
-extra["essential.defaults.loom.fabric-loader"] =
-	"net.fabricmc:fabric-loader:${property("fabric.loader")}"
+//extra["essential.defaults.loom.fabric-loader"] =
+//	"net.fabricmc:fabric-loader:${property("fabric.loader")}"
 
 stonecutter {
 	val (version, loader) = current.project.split('-', limit = 2)
@@ -38,6 +38,8 @@ dependencies {
 	implementation(libs.snakeyaml)
 	minecraft("com.mojang:minecraft:${prop("loader.minecraft")}")
 	mappings(loom.officialMojangMappings())
+
+	modImplementation("net.fabricmc:fabric-loader:${prop("fabric.loader")}")
 	modImplementation("net.fabricmc.fabric-api:fabric-api:${prop("deps.fabric-api")}")
 }
 
