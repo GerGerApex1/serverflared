@@ -37,11 +37,11 @@ loom {
 	}
 }
 dependencies {
-	// implementation(libs.jackson.core)
-	// implementation(libs.jackson.dataformat.yaml)
-	// implementation(libs.jackson.databind)
-	// implementation(libs.jackson.annotations)
-	// implementation(libs.snakeyaml)
+	implementation(libs.jackson.core)
+	implementation(libs.jackson.dataformat.yaml)
+	implementation(libs.jackson.databind)
+	implementation(libs.jackson.annotations)
+	implementation(libs.snakeyaml)
 	minecraft("com.mojang:minecraft:${prop("loader.minecraft")}")
 	if (14 <= minorVersion) {
 		mappings(loom.officialMojangMappings())

@@ -31,14 +31,14 @@ platform {
 	}
 }
 dependencies {
-	// implementation(libs.jackson.core)
-	// implementation(libs.jackson.dataformat.yaml)
-	// implementation(libs.jackson.databind)
-	// implementation(libs.jackson.annotations)
-	// implementation(libs.snakeyaml)
+	implementation(libs.jackson.core)
+	implementation(libs.jackson.dataformat.yaml)
+	implementation(libs.jackson.databind)
+	implementation(libs.jackson.annotations)
+	implementation(libs.snakeyaml)
 	minecraft("com.mojang:minecraft:${prop("loader.minecraft")}")
 	mappings(loom.officialMojangMappings())
-	//"modImplementation"(include("net.fabricmc.fabric-api:fabric-api:${prop("deps.fabric-api")}"))
+	modImplementation("net.fabricmc.fabric-api:fabric-api:${prop("deps.fabric-api")}")
 }
 
 
