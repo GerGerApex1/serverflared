@@ -37,18 +37,17 @@ loom {
 	}
 }
 dependencies {
-	implementation(libs.jackson.core)
-	implementation(libs.jackson.dataformat.yaml)
-	implementation(libs.jackson.databind)
-	implementation(libs.jackson.annotations)
-	implementation(libs.snakeyaml)
+	includeDep(libs.jackson.core)
+	includeDep(libs.jackson.dataformat.yaml)
+	includeDep(libs.jackson.databind)
+	includeDep(libs.jackson.annotations)
+	includeDep(libs.snakeyaml)
 	minecraft("com.mojang:minecraft:${prop("loader.minecraft")}")
 	if (14 <= minorVersion) {
 		mappings(loom.officialMojangMappings())
 	} else {
 		if (!(providers.gradleProperty("mappings.mcp.channel").isPresent) || property("mappings.mcp.channel") == "snapshot") {
 			mappings("de.oceanlabs.mcp:mcp_snapshot:${prop("mappings.mcp")}")
-			println(prop("essential.defaults.loom"))
 		} else if (property("mappings.mcp.channel") == "stable") {
 			mappings("de.oceanlabs.mcp:mcp_stable:${prop("mappings.mcp")}")
 		} else {
@@ -62,5 +61,5 @@ dependencies {
 
 
 tasks.assemble {
-	//dependsOn("remapJar")
+	dependsOn("remapJar")
 }

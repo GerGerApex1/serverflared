@@ -20,7 +20,6 @@ import org.gradle.plugins.ide.idea.model.IdeaModel
 import java.util.*
 import javax.inject.Inject
 import org.gradle.jvm.toolchain.JavaLanguageVersion
-import xyz.wagyourtail.jvmdg.ClassDowngrader.downgradeTo
 import xyz.wagyourtail.jvmdg.gradle.task.DowngradeJar
 import xyz.wagyourtail.jvmdg.gradle.task.ShadeJar
 
@@ -40,31 +39,29 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 					stonecutter.current.version,
 					">=26.1"
 				)
-			) "shadowJar" else "shadowJar"
-		val needDowngrade = JavaVersion.current() > resolveJavaVersion()
-
+			) "jar" else "remapJar"
+		val jarTaskName = if (supportsJarInJar(stonecutter, inferredLoader)) versionDeobfuscated else "shadowJar"
 		val extension = extensions.create("platform", ModPlatformExtension::class.java).apply {
 			loader.convention(inferredLoader)
-			jarTask.convention(versionDeobfuscated)
+			jarTask.convention(jarTaskName)
 			sourcesJarTask.convention("sourcesJar")
+		}
+		val includeDependancy = configurations.maybeCreate("includeDep").apply {
+			isCanBeConsumed = false
+			isCanBeDeclared = false
 		}
 		listOf(
 			"org.jetbrains.kotlin.jvm",
 			"com.google.devtools.ksp",
 			"xyz.wagyourtail.jvmdowngrader",
-			"com.gradleup.shadow"
+			"com.gradleup.shadow",
+			"gg.essential.loom"
 			//	"xyz.wagyourtail.unimined"
 		).forEach { apply(plugin = it) }
-		createShadowImplConfiguration()
+		configureDependancies(stonecutter, extension, includeDependancy)
+
 		afterEvaluate {
 			configureProject(extension)
-			if(!stonecutter.eval(stonecutter.current.version, ">=26.1")) {
-				if (needDowngrade) {
-					configureManagedDowngrade()
-				} else {
-					configureDirectRemap()
-				}
-			}
 		}
 	}
 
@@ -73,7 +70,6 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 		val isFabric = loader == "fabric"
 		val isNeoForge = loader == "neoforge"
 		val isForge = loader == "forge"
-
 		val modId = prop("mod.id")
 		val modVersion = prop("mod.version")
 		val channelTag = prop("mod.channel_tag")
@@ -103,6 +99,7 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 
 		// configureFletchingTable()
 		configureJarTask(modId)
+		createShadowImplConfiguration()
 		configureIdea()
 		configureProcessResources(
 			isFabric,
@@ -419,6 +416,37 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 		deps.embeds.forEach { dep -> whenNotNull(dep.curseforge) { embeds(it) } }
 	}
 
+	private fun Project.configureDependancies(
+		stonecutter: StonecutterBuildExtension,
+		modPlatformExtension: ModPlatformExtension,
+		dependancyConfiguration: org.gradle.api.artifacts.Configuration
+	) {
+		println(dependancyConfiguration.dependencies)
+		configurations.matching { it.name == "implementation" }.all {
+			extendsFrom(dependancyConfiguration)
+		}
+		if(supportsJarInJar(stonecutter, modPlatformExtension.loader.get())) {
+			pluginManager.withPlugin("gg.essential.loom") {
+				configurations.matching { it.name == "include" }.all {
+					extendsFrom(dependancyConfiguration)
+				}
+			}
+		} else {
+			if(!stonecutter.eval(stonecutter.current.version, ">=26.1")) {
+				val needDowngrade = JavaVersion.current() > resolveJavaVersion()
+				afterEvaluate {
+					if (needDowngrade) {
+						configureManagedDowngrade()
+					} else {
+						configureDirectRemap()
+					}
+				}
+			}
+			tasks.named<ShadowJar>("shadowJar") {
+				configurations = listOf(dependancyConfiguration)
+			}
+		}
+	}
 	private fun Project.configureManagedDowngrade() {
 		project.tasks.named<RemapJarTask>("remapJar") {
 			dependsOn("shadeDowngradedApi")
@@ -471,7 +499,6 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 			isCanBeConsumed = false
 			extendsFrom(configurations.getByName("implementation"))
 		}
-
 		tasks.named<ShadowJar>("shadowJar") {
 			configurations = listOf(shadowImpl)
 		}
@@ -499,6 +526,15 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 			stonecutter.eval(stonecutter.current.version, ">=1.18") -> JavaLanguageVersion.of(17)
 			stonecutter.eval(stonecutter.current.version, ">=1.17") -> JavaLanguageVersion.of(16)
 			else -> JavaLanguageVersion.of(8)
+		}
+	}
+	private fun Project.supportsJarInJar(stonecutter: StonecutterBuildExtension, loader: String): Boolean {
+		return when (loader) {
+			"fabric" -> true
+			"neoforge" -> true
+			"forge" -> stonecutter.eval(stonecutter.current.version, ">=1.18")
+			"deobfuscated" -> true
+			else -> false
 		}
 	}
 }

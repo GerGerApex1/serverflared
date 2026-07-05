@@ -32,11 +32,11 @@ val mcVersionArray = prop("loader.minecraft").split(".")
 loom {
 }
 dependencies {
-	implementation(libs.jackson.core)
-	implementation(libs.jackson.dataformat.yaml)
-	implementation(libs.jackson.databind)
-	implementation(libs.jackson.annotations)
-	implementation(libs.snakeyaml)
+	includeDep(libs.jackson.core)
+	includeDep(libs.jackson.dataformat.yaml)
+	includeDep(libs.jackson.databind)
+	includeDep(libs.jackson.annotations)
+	includeDep(libs.snakeyaml)
 	minecraft("com.mojang:minecraft:${prop("loader.minecraft")}")
 	mappings(loom.officialMojangMappings())
 

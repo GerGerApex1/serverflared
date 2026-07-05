@@ -39,28 +39,6 @@ platform {
 		}
 	}
 }
-/*
-unimined.minecraft {
-	version = prop("loader.minecraft")
-	side("server")
-	runs {
-		config("server") {
-			//workingDir("run/")
-			//name = "Fabric Server (${prop("deps.minecraft")})"
-		}
-	}
-}
-if (mcLoader == "fabric") {
- 	unimined.minecraft { fabric { loader("${property("fabric.loader")}") } }
-}
-if (mcLoader == "forge") {
-	unimined.minecraft { minecraftForge { loader("${property("loader.forge")}") } }
-}
-if (mcLoader == "neoForge") {
-	unimined.minecraft { neoForge { loader("${property("loader.neoforge")}") } }
-
-}
-*/
 tasks.named<ShadowJar>("shadowJar") {
 	archiveClassifier.set("shadow")
 
@@ -79,11 +57,11 @@ repositories {
 
 }
 dependencies {
-	implementation(libs.jackson.core)
-	implementation(libs.jackson.dataformat.yaml)
-	implementation(libs.jackson.databind)
-	implementation(libs.jackson.annotations)
-	implementation(libs.snakeyaml)
+	includeDep(libs.jackson.core)
+	includeDep(libs.jackson.dataformat.yaml)
+	includeDep(libs.jackson.databind)
+	includeDep(libs.jackson.annotations)
+	includeDep(libs.snakeyaml)
 
 	minecraft("com.mojang:minecraft:${prop("loader.minecraft")}")
 	if (mcLoader == "fabric") {

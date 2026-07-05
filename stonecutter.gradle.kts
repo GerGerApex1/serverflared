@@ -7,9 +7,8 @@ plugins {
 	alias(libs.plugins.mod.publish.plugin).apply(false)
 	alias(libs.plugins.kotlin.jvm).apply(false)
 	alias(libs.plugins.devtools.ksp).apply(false)
-	//alias(libs.plugins.fletching.table).apply(false)
 	alias(libs.plugins.gradleup.shadow).apply(false)
-	//alias(libs.plugins.unimined).apply(false)
+	alias(libs.plugins.architectury.loom).apply(false)
 }
 
 stonecutter active file(".sc_active_version")
