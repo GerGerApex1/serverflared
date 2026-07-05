@@ -1,6 +1,5 @@
 package me.gergerapex1.serverflared;
 
-import com.mojang.datafixers.kinds.Const;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
