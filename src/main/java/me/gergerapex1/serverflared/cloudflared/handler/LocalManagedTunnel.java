@@ -104,7 +104,7 @@ public class LocalManagedTunnel {
         }
         return configFilePath;
     }
-    public void terminate() {
+    public void terminateProcesses() {
         executor.terminate();
     }
     public boolean tunnelAlreadyExist(String line) {

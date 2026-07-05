@@ -36,12 +36,12 @@ public class ForgeLegacyPlatform implements Platform {
 
     @Override
     public Path getGameDirectory() {
-        return server.getDataDirectory().toPath();
+        return Loader.instance().getConfigDir().getParentFile().toPath();
     }
 
     @Override
     public Path getConfigDirectory() {
-        return getGameDirectory().resolve("config");
+        return Loader.instance().getConfigDir().toPath();
     }
 
 	@Override

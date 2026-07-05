@@ -101,7 +101,7 @@ public class ProcessHandler {
 				}
                 Constants.LOG.info("Terminated process: {}", p.exitValue());
             } catch (Exception e) {
-                Constants.LOG.warn("Failed to terminate process: {}", p);
+                Constants.LOG.warn("Failed to terminatProcesses process: {}", p);
             }
         }
         processes.clear();

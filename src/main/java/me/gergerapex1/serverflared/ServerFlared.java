@@ -1,5 +1,6 @@
 package me.gergerapex1.serverflared;
 
+import com.mojang.datafixers.kinds.Const;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -30,7 +31,7 @@ public class ServerFlared {
 			firstTimeMode = true;
 			modDisabled = true;
             logFirstTimeSetup();
-			firstTimeSetupAuthentication();
+			//firstTimeSetupAuthentication();
             return;
         }
         if (handler == null) {
@@ -112,8 +113,11 @@ public class ServerFlared {
         Constants.LOG.debug("Tunnel started!");
     }
     public static void cleanup() {
+		Constants.LOG.info("Stopping serverflared");
         Constants.LOG.info("Stopping all processes...");
-        localHandler.terminate();
+		handler.terminateProcesses();
+        localHandler.terminateProcesses();
+		Constants.LOG.info("Successfully stopped serverflared. See you next time!");
     }
     public static void runTunnelBackground() {
         localHandler.runLocalTunnel(info.getId());

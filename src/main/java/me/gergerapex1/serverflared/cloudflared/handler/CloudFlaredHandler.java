@@ -407,5 +407,8 @@ public class CloudFlaredHandler {
     public void tunnelNotFound(String tunnelIdOrName) {
         Constants.LOG.debug("Tunnel with ID or Name '{}' not found", tunnelIdOrName);
     }
+	public void terminateProcesses() {
+		processHandler.terminate();
+	}
 }
 

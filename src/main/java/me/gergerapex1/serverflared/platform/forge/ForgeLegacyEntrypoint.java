@@ -7,7 +7,7 @@ import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.Mod.EventHandler;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLServerStartedEvent;
-import net.minecraftforge.fml.common.event.FMLServerStartingEvent;
+import net.minecraftforge.fml.common.event.FMLPostInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLServerStoppingEvent;
 import net.minecraftforge.fml.common.Mod;
 import me.gergerapex1.serverflared.Constants;
@@ -21,7 +21,7 @@ public class ForgeLegacyEntrypoint {
 		MinecraftForge.EVENT_BUS.register(ForgeLegacyPlatform.class);
 	}
 	@EventHandler
-	public void serverStarting(FMLServerStartingEvent event) {
+	public void serverStarting(FMLPostInitializationEvent event) {
 		ServerFlared.handleTunnel();
 	}
 	@EventHandler

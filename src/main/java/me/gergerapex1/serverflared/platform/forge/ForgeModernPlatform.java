@@ -10,6 +10,7 @@ import net.minecraft.server.MinecraftServer;
 import java.nio.file.Path;
 //$ fml_serverlifecyclehooks_1_18
 import net.minecraftforge.server.ServerLifecycleHooks;
+import net.minecraftforge.fml.loading.FMLPaths;
 public class ForgeModernPlatform implements Platform {
 	private static MinecraftServer serverHook = ServerLifecycleHooks.getCurrentServer();
 	@Override
@@ -24,11 +25,7 @@ public class ForgeModernPlatform implements Platform {
     }
     @Override
     public Path getGameDirectory() {
-		//? if >1.21 {
-		return serverHook != null ? serverHook.getServerDirectory() : Path.of(".");
-		//? } else {
-		/^return serverHook != null ? serverHook.getServerDirectory().toPath() : Path.of(".");
-		^///? }
+		return FMLPaths.GAMEDIR.get();
     }
 	@Override
     public ModLoader getPlatformName() {
@@ -36,7 +33,7 @@ public class ForgeModernPlatform implements Platform {
     }
     @Override
     public Path getConfigDirectory() {
-        return getGameDirectory().resolve("config");
+        return FMLPaths.CONFIGDIR.get();
     }
     @Override
     public int getServerPort() {
