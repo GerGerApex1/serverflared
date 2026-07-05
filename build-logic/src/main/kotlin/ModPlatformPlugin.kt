@@ -421,7 +421,6 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 		modPlatformExtension: ModPlatformExtension,
 		dependancyConfiguration: org.gradle.api.artifacts.Configuration
 	) {
-		println(dependancyConfiguration.dependencies)
 		configurations.matching { it.name == "implementation" }.all {
 			extendsFrom(dependancyConfiguration)
 		}
