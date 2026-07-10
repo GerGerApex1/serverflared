@@ -27,7 +27,7 @@ jobs:
             const fs = require('fs');
             const path = require('path');
 
-            const root = path.join('modloaders', 'versions');
+            const root = path.join('${{ github.workspace }}','modloaders', 'versions');
 
             const folders = fs.readdirSync(root, { withFileTypes: true })
               .filter(d => d.isDirectory())
