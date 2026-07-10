@@ -14,7 +14,12 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
       - id: set-matrix
+        name: Set Matrix
         uses: actions/github-script@v9
         with:
           script: |
