@@ -21,26 +21,36 @@ jobs:
   define-matrix:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      matrix: ${{ steps.set-matrix.outputs.result }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
       - id: set-matrix
+        name: Set Matrix
         uses: actions/github-script@v9
         with:
+          result-encoding: string
           script: |
             const fs = require('fs');
             const path = require('path');
 
-            const root = path.join('${{ github.workspace }}','modloaders', 'versions');
+            const root = path.join(process.cwd(), 'modloaders', 'versions');
 
             const folders = fs.readdirSync(root, { withFileTypes: true })
               .filter(d => d.isDirectory())
               .map(d => d.name);
-
+            console.log(folders)
             core.setOutput('matrix', JSON.stringify({ version: folders }));
+            return JSON.stringify(folders);
+      - name: Output Matrix
+        id: output-matrix
+        run: echo "${{ steps.set-matrix.outputs.result }}"
   prepare:
     name: Prepare Release
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, define-matrix]
     permissions:
       contents: write
 
@@ -111,7 +121,7 @@ jobs:
   github-release:
     name: Release to GitHub
     runs-on: ubuntu-latest
-    needs: prepare
+    needs: [prepare, define-matrix]
     if: needs.prepare.outputs.publish_github == 'true'
     permissions:
       contents: write
@@ -168,7 +178,7 @@ jobs:
   platform-release:
     name: Release to Platforms (${{ matrix.version }})
     runs-on: ubuntu-latest
-    needs: [ prepare ]
+    needs: [ prepare, define-matrix ]
     continue-on-error: true
     strategy:
       fail-fast: false
