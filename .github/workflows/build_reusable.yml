@@ -12,7 +12,7 @@ jobs:
   define-matrix:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      matrix: ${{ steps.set-matrix.outputs.result }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -34,8 +34,10 @@ jobs:
               .map(d => d.name);
             console.log(folders)
             core.setOutput('matrix', JSON.stringify({ version: folders }));
+            return "version=" + JSON.stringify(folders);
       - name: Output Matrix
-        run: echo "${{ needs.define-matrix.outputs.matrix }}"
+        id: output-matrix
+        run: echo "${{ steps.set-matrix.outputs.result }}"
   build:
     name: Build Project
     runs-on: ubuntu-latest
