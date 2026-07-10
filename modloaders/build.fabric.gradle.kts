@@ -7,29 +7,28 @@ plugins {
 	alias(libs.plugins.jvmdowngrader)
 	alias(libs.plugins.architectury.loom)
 }
-extra["loom.platform"] =
-	"forge"
+//extra["essential.defaults.loom.fabric-loader"] =
+//	"net.fabricmc:fabric-loader:${property("fabric.loader")}"
 
 stonecutter {
 	val (version, loader) = current.project.split('-', limit = 2)
 	properties.tags(version, loader)
 }
 platform {
-	loader = "neoforge"
+	loader = "fabric"
 	dependencies {
 		required("minecraft") {
-			forgeVersionRange =  "[${prop("deps.minecraft.min")}, ${prop("deps.minecraft.max")}]"
+			versionRange = ">=${prop("deps.minecraft.min")} <${prop("deps.minecraft.max")}"
 			environment = "server"
 		}
-		required("neoforge") {
-			forgeVersionRange = "[1.0,)"
+		required("fabric-api") {
+			slug("fabric-api")
+			versionRange = ">=${prop("deps.fabric-api")}"
 		}
-
+		required("fabricloader") {
+			versionRange = ">=${property("fabric.loader")}"
+		}
 	}
-}
-val mcVersionArray = prop("loader.minecraft").split(".")
-
-loom {
 }
 dependencies {
 	includeDep(libs.jackson.core)
@@ -37,18 +36,12 @@ dependencies {
 	includeDep(libs.jackson.databind)
 	includeDep(libs.jackson.annotations)
 	includeDep(libs.snakeyaml)
+	common(project(":common"))
 	minecraft("com.mojang:minecraft:${prop("loader.minecraft")}")
 	mappings(loom.officialMojangMappings())
+	modImplementation("net.fabricmc:fabric-loader:${prop("fabric.loader")}")
+	modImplementation("net.fabricmc.fabric-api:fabric-api:${prop("deps.fabric-api")}")
 
-	neoForge("net.neoforged:neoforge:${prop("loader.neoforge")}")
-
-	//"modImplementation"(include("net.fabricmc.fabric-api:fabric-api:${prop("deps.fabric-api")}"))
-}
-repositories {
-	maven {
-		name = "NeoForged"
-		url = uri("https://maven.neoforged.net/releases")
-	}
 }
 
 

@@ -2,7 +2,6 @@ import org.jetbrains.kotlin.gradle.utils.property
 
 plugins {
 	alias(libs.plugins.stonecutter)
-	alias(libs.plugins.dotenv)
 	alias(libs.plugins.jsonlang.postprocess).apply(false)
 	alias(libs.plugins.mod.publish.plugin).apply(false)
 	alias(libs.plugins.kotlin.jvm).apply(false)

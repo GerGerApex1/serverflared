@@ -1,5 +1,5 @@
 [versions]
-stonecutter = "0.9.4"
+stonecutter = "0.9.6"
 stonecutter-postprocess = "2.1-beta.8"
 mod-publish = "1.1.0"
 dotenv-gradle = "4.0.0"
@@ -16,7 +16,7 @@ jvmdowngrader="1.3.6"
 unimined="1.4.2-SNAPSHOT"
 architectury-loom = "1.15.50"
 architectury-loom-pack200 = "0.1.3"
-
+slf4j = "2.0.7"
 [libraries]
 kikugie-postprocess = { module = "dev.kikugie:postprocess", version.ref = "stonecutter-postprocess" }
 mod-publish-plugin = { module = "me.modmuss50:mod-publish-plugin", version.ref = "mod-publish" }
@@ -33,7 +33,7 @@ snakeyaml = { module = "org.yaml:snakeyaml", version.ref = "snakeyaml" }
 #build logic
 jvmdowngrader = { module = "xyz.wagyourtail.jvmdowngrader:gradle-plugin", version.ref = "jvmdowngrader" }
 architectury-loom = { module = "gg.essential.loom:gg.essential.loom.gradle.plugin", version.ref = "architectury-loom" }
-
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 [plugins]
 stonecutter = { id = "dev.kikugie.stonecutter", version.ref = "stonecutter" }
 dotenv = { id = "co.uzzu.dotenv.gradle", version.ref = "dotenv-gradle" }

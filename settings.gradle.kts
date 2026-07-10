@@ -26,7 +26,7 @@ pluginManagement {
 
 plugins {
 	id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
-	id("dev.kikugie.stonecutter") version "0.9.4"
+	id("dev.kikugie.stonecutter") version "0.9.6"
 }
 buildscript {
 	dependencies {
@@ -59,7 +59,7 @@ val deobfuscatedMinecraftVersions = listOf(
 )
  */
 stonecutter {
-	create(rootProject) {
+	create("modloaders") {
 		fun createVersionDirectory(mcVersionList: List<String>, loaderList: List<String>) {
 			for (mcVersion in mcVersionList) {
 				for (loader in loaderList) {
@@ -96,3 +96,5 @@ fun isSupported(minorVersion: Int, loader: String): Boolean =
 		"neoforge" -> minorVersion >= 20
 		else -> true
 	}
+
+include("common")

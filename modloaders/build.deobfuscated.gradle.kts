@@ -83,4 +83,5 @@ dependencies {
 	if(mcLoader == "neoforge") {
 		"neoForge"("net.neoforged:neoforge:${prop("loader.neoforge")}")
 	}
+	common(project(":common"))
 }

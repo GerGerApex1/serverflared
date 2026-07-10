@@ -42,6 +42,7 @@ dependencies {
 	includeDep(libs.jackson.databind)
 	includeDep(libs.jackson.annotations)
 	includeDep(libs.snakeyaml)
+	includeDep(project(":common"))
 	minecraft("com.mojang:minecraft:${prop("loader.minecraft")}")
 	if (14 <= minorVersion) {
 		mappings(loom.officialMojangMappings())
