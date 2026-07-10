@@ -34,7 +34,7 @@ jobs:
               .map(d => d.name);
             console.log(folders)
             core.setOutput('matrix', JSON.stringify({ version: folders }));
-            return "version=" + JSON.stringify(folders);
+            return JSON.stringify(folders);
       - name: Output Matrix
         id: output-matrix
         run: echo "${{ steps.set-matrix.outputs.result }}"
