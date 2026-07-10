@@ -34,21 +34,18 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 		val stonecutter = extensions.getByType<StonecutterBuildExtension>()
 
 		val inferredLoader = project.buildFile.name.substringAfter('.').replace(".gradle.kts", "")
-		val versionDeobfuscated =
-			if (stonecutter.eval(
-					stonecutter.current.version,
-					">=26.1"
-				)
-			) "jar" else "remapJar"
-		val jarTaskName = if (supportsJarInJar(stonecutter, inferredLoader)) versionDeobfuscated else "shadowJar"
 		val extension = extensions.create("platform", ModPlatformExtension::class.java).apply {
 			loader.convention(inferredLoader)
-			jarTask.convention(jarTaskName)
+			jarTask.convention("shadowJar")
 			sourcesJarTask.convention("sourcesJar")
 		}
 		val includeDependancy = configurations.maybeCreate("includeDep").apply {
 			isCanBeConsumed = false
-			isCanBeDeclared = false
+			isCanBeDeclared = true
+		}
+		val commonDependancy = configurations.maybeCreate("common").apply {
+			isCanBeConsumed = false
+			isCanBeDeclared = true
 		}
 		listOf(
 			"org.jetbrains.kotlin.jvm",
@@ -58,7 +55,7 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 			"gg.essential.loom"
 			//	"xyz.wagyourtail.unimined"
 		).forEach { apply(plugin = it) }
-		configureDependancies(stonecutter, extension, includeDependancy)
+		configureDependancies(stonecutter, extension, includeDependancy, commonDependancy)
 
 		afterEvaluate {
 			configureProject(extension)
@@ -419,55 +416,54 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 	private fun Project.configureDependancies(
 		stonecutter: StonecutterBuildExtension,
 		modPlatformExtension: ModPlatformExtension,
-		dependancyConfiguration: org.gradle.api.artifacts.Configuration
+		includeDepConfiguration: org.gradle.api.artifacts.Configuration,
+		commonConfiguration: org.gradle.api.artifacts.Configuration
 	) {
 		configurations.matching { it.name == "implementation" }.all {
-			extendsFrom(dependancyConfiguration)
+			extendsFrom(includeDepConfiguration)
+		}
+		configurations.matching { it.name == "implementation" }.all {
+			extendsFrom(commonConfiguration)
 		}
 		if(supportsJarInJar(stonecutter, modPlatformExtension.loader.get())) {
 			pluginManager.withPlugin("gg.essential.loom") {
 				configurations.matching { it.name == "include" }.all {
-					extendsFrom(dependancyConfiguration)
+					extendsFrom(includeDepConfiguration)
 				}
 			}
 		} else {
-			if(!stonecutter.eval(stonecutter.current.version, ">=26.1")) {
-				val needDowngrade = JavaVersion.current() > resolveJavaVersion()
-				afterEvaluate {
-					if (needDowngrade) {
-						configureManagedDowngrade()
-					} else {
-						configureDirectRemap()
-					}
-				}
-			}
 			tasks.named<ShadowJar>("shadowJar") {
-				configurations = listOf(dependancyConfiguration)
+				configurations = listOf(includeDepConfiguration)
+			}
+		}
+		if(!stonecutter.eval(stonecutter.current.version, ">=26.1")) {
+			val needDowngrade = JavaVersion.current() > resolveJavaVersion()
+			afterEvaluate {
+				if (needDowngrade) {
+					configureManagedDowngrade()
+				} else {
+					configureDirectRemap()
+				}
 			}
 		}
 	}
 	private fun Project.configureManagedDowngrade() {
 		project.tasks.named<RemapJarTask>("remapJar") {
-			dependsOn("shadeDowngradedApi")
-			inputFile.set(tasks.named<ShadeJar>("shadeDowngradedApi").flatMap { it.archiveFile })
-			archiveClassifier.set("")
-		}
-
-		project.tasks.named<RemapJarTask>("remapJar") {
-			dependsOn("shadeDowngradedApi")
-			inputFile.set(tasks.named<ShadeJar>("shadeDowngradedApi").flatMap { it.archiveFile })
+			dependsOn(tasks.named("shadowJar"))
+			inputFile.set(tasks.named<ShadowJar>("shadowJar").flatMap { it.archiveFile })
 			archiveClassifier.set("")
 		}
 
 		project.tasks.named<DowngradeJar>("downgradeJar") {
-			inputFile.set(tasks.named<ShadowJar>("shadowJar").get().archiveFile)
+			dependsOn(tasks.named("remapJar"))
+			inputFile.set(tasks.named<RemapJarTask>("remapJar").flatMap { it.archiveFile })
 			archiveClassifier = "downgradedJar"
 			downgradeTo = resolveJavaVersion()
 		}
 
 		project.tasks.named<ShadeJar>("shadeDowngradedApi") {
-			dependsOn("downgradeJar")
-			inputFile.set(tasks.named<DowngradeJar>("downgradeJar").get().archiveFile)
+			dependsOn(tasks.named("downgradeJar"))
+			inputFile.set(tasks.named<DowngradeJar>("downgradeJar").flatMap { it.archiveFile })
 			archiveClassifier = "shadeDowngradedJar"
 		}
 	}
@@ -496,7 +492,6 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 		val shadowImpl = configurations.maybeCreate("shadowImpl").apply {
 			isCanBeResolved = true
 			isCanBeConsumed = false
-			extendsFrom(configurations.getByName("implementation"))
 		}
 		tasks.named<ShadowJar>("shadowJar") {
 			configurations = listOf(shadowImpl)
