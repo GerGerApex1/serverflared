@@ -22,6 +22,7 @@ jobs:
         name: Set Matrix
         uses: actions/github-script@v9
         with:
+          result-encoding: string
           script: |
             const fs = require('fs');
             const path = require('path');
