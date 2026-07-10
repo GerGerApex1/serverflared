@@ -9,37 +9,32 @@ permissions:
   contents: read
 
 jobs:
+  define-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - id: set-matrix
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const root = path.join('modloaders', 'versions');
+
+            const folders = fs.readdirSync(root, { withFileTypes: true })
+              .filter(d => d.isDirectory())
+              .map(d => d.name);
+
+            core.setOutput('matrix', JSON.stringify({ version: folders }));
   build:
     name: Build Project
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        # doing this live a caveman
-        version:
-          - 1.8.9-forge
-          - 1.9-forge
-          - 1.10-forge
-          - 1.11-forge
-          - 1.12-forge
-          - 1.14.4-forge
-          - 1.15.2-forge
-          - 1.16.5-fabric
-          - 1.16.5-forge
-          - 1.17.1-fabric
-          - 1.17.1-forge
-          - 1.18.2-fabric
-          - 1.18.2-forge
-          - 1.19.2-fabric
-          - 1.19.2-forge
-          - 1.20.2-fabric
-          - 1.20.2-forge
-          - 1.20.2-neoforge
-          - 1.21.1-fabric
-          - 1.21.1-forge
-          - 1.21.1-neoforge
-          - 26.1-fabric
-          - 26.2-fabric
+        version: ${{ fromJSON(needs.define-matrix.outputs.matrix) }}
     outputs:
       artifact-name: ${{ steps.upload.outputs.artifact-name }}
 
