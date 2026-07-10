@@ -40,6 +40,7 @@ jobs:
         run: echo "${{ steps.set-matrix.outputs.result }}"
   build:
     name: Build Project
+    needs: define-matrix
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
