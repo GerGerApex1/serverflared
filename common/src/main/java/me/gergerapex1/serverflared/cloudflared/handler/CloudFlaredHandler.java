@@ -59,7 +59,7 @@ public class CloudFlaredHandler {
         }
 
         Download.binary(binaryName, binaryName, binariesFolder.toString());
-
+		Download.downloadLicense(binariesFolder.toString());
         if (osArch.getOs().equals("mac")) {
             extractMacBinary(binariesFolder, binaryName);
         }

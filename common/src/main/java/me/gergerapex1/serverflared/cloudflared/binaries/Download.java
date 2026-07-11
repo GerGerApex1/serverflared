@@ -16,7 +16,16 @@ public class Download {
     private static final int BUFFER_SIZE = 8192;
     private static final int HTTP_OK = 200;
     private static final int MAX_REDIRECTS = 5;
-
+	public static void downloadLicense(String savedDir) {
+		String downloadUrl = "https://raw.githubusercontent.com/cloudflare/cloudflared/refs/heads/master/LICENSE";
+		try {
+			Path outputPath = prepareOutputPath(savedDir, "LICENSE");
+			URI uri = URI.create(downloadUrl);
+			downloadFile(uri, outputPath);
+		} catch (IOException e) {
+			Constants.LOG.error("Failed to download license: {}", e.getMessage(), e);
+		}
+	}
     public static void binary(String archiveName, String filename, String savedDir) {
         try {
             String downloadUrl = BASE_URL + archiveName;
