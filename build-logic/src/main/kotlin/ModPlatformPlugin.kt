@@ -7,6 +7,7 @@ import ProjectConfiguration.configureJava
 import ProjectConfiguration.configureProcessResources
 import ProjectConfiguration.registerBuildAndCollectTask
 import Publishing.configurePublishing
+import ShadowTask.configureShadow
 import ShadowTask.createShadowImplConfiguration
 import Utils.resolveJavaVersion
 import dev.kikugie.stonecutter.build.StonecutterBuildExtension
@@ -28,7 +29,7 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 
 		val inferredLoader = project.buildFile.name.substringAfter('.').replace(".gradle.kts", "")
 		val extension = extensions.create("platform", ModPlatformExtension::class.java).apply {
-			loader.convention(inferredLoader)
+			loader.convention(Loader.valueOf(inferredLoader.uppercase()))
 			jarTask.convention("shadowJar")
 			sourcesJarTask.convention("sourcesJar")
 		}
@@ -39,9 +40,10 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 			"com.google.devtools.ksp",
 			"xyz.wagyourtail.jvmdowngrader",
 			"com.gradleup.shadow",
-			"gg.essential.loom"
-			//	"xyz.wagyourtail.unimined"
 		).forEach { apply(plugin = it) }
+		if(listOf(Loader.FABRIC, Loader.NEOFORGE, Loader.FORGE).contains(extension.loader.get())) {
+			apply(plugin = "gg.essential.loom")
+		}
 		configureDependancies(stonecutter, extension)
 
 		afterEvaluate {
@@ -51,9 +53,7 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 
 	private fun Project.configureProject(extension: ModPlatformExtension) {
 		val loader = extension.loader.get()
-		val isFabric = loader == "fabric"
-		val isNeoForge = loader == "neoforge"
-		val isForge = loader == "forge"
+		println(loader)
 		val modId = prop("mod.id")
 		val modVersion = prop("mod.version")
 		val channelTag = prop("mod.channel_tag")
@@ -67,28 +67,23 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 			"idea",
 		).forEach { apply(plugin = it) }
 
-		version = "$modVersion$channelTag+$mcVersion-$loader"
-
+		version = "$modVersion$channelTag+$mcVersion-${loader.loader}"
 		extension.requiredJava.set(
 			resolveJavaVersion()
 		)
 
-		if (isFabric) {
+		if (loader === Loader.FABRIC) {
 			extension.dependencies {
 				required("java") {
 					versionRange = ">=${extension.requiredJava.get().majorVersion}"
 				}
 			}
 		}
-
-		// configureFletchingTable()
 		configureJarTask(modId)
-		createShadowImplConfiguration()
+		configureShadow()
 		configureIdea()
 		configureProcessResources(
-			isFabric,
-			isNeoForge,
-			isForge,
+			loader,
 			modId,
 			"$modVersion$channelTag",
 			mcVersion,
@@ -99,7 +94,7 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 		registerBuildAndCollectTask(extension, "$modVersion$channelTag")
 		configurePublishing(
 			extension,
-			loader,
+			loader.loader,
 			stonecutter,
 			"$modVersion$channelTag",
 			channelTag,

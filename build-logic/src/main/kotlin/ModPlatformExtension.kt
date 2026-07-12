@@ -11,7 +11,7 @@ import javax.inject.Inject
 abstract class ModPlatformExtension {
 
 	abstract val requiredJava: Property<JavaVersion>
-	abstract val loader: Property<String>
+	abstract val loader: Property<Loader>
 	abstract val jarTask: Property<String>
 	abstract val sourcesJarTask: Property<String>
 

@@ -15,7 +15,7 @@ stonecutter {
 	properties.tags(version, loader)
 }
 platform {
-	loader = "fabric"
+	loader.set(Loader.FABRIC)
 	dependencies {
 		required("minecraft") {
 			versionRange = ">=${prop("deps.minecraft.min")} <${prop("deps.minecraft.max")}"

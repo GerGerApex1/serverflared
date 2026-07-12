@@ -93,9 +93,7 @@ object ProjectConfiguration {
 	}
 
 	fun Project.configureProcessResources(
-		isFabric: Boolean,
-		isNeoForge: Boolean,
-		isForge: Boolean,
+		loader: Loader,
 		modId: String,
 		modVersion: String,
 		mcVersion: String,
@@ -105,7 +103,7 @@ object ProjectConfiguration {
 		tasks.named<ProcessResources>("processResources") {
 			dependsOn(tasks.named("stonecutterGenerate"))
 			dependsOn("kspKotlin")
-
+			val isFabric = loader == Loader.FABRIC
 			filesMatching("*.mixins.json") { expand("java" to "JAVA_${requiredJava.majorVersion}") }
 
 			var contributors = prop("mod.contributors")
@@ -136,9 +134,8 @@ object ProjectConfiguration {
 				"discord_url" to prop("mod.discord_url"),
 				"dependencies" to dependencies
 			)
-
-			when {
-				isFabric -> {
+			when (loader) {
+				Loader.FABRIC -> {
 					filesMatching("fabric.mod.json") {
 						expand(props)
 						filter { line ->
@@ -157,7 +154,7 @@ object ProjectConfiguration {
 					)
 				}
 
-				isNeoForge -> {
+				Loader.NEOFORGE -> {
 					filesMatching("META-INF/neoforge.mods.toml") { expand(props) }
 					exclude(
 						"META-INF/mods.toml",
@@ -168,7 +165,7 @@ object ProjectConfiguration {
 					)
 				}
 
-				isForge -> {
+				Loader.FORGE -> {
 					filesMatching("META-INF/mods.toml") { expand(props) }
 					exclude(
 						"META-INF/neoforge.mods.toml",
@@ -176,6 +173,20 @@ object ProjectConfiguration {
 						"aw/*.accesswidener",
 						".cache"
 					)
+				}
+				Loader.SPIGOT -> {
+					filesMatching("plugin.yml") { expand(props) }
+					exclude(
+						"META-INF/mods.toml",
+						"META-INF/neoforge.mods.toml",
+						"fabric.mod.json",
+						"aw/*.cfg",
+						".cache",
+						"pack.mcmeta"
+					)
+				}
+				else -> {
+
 				}
 			}
 		}
@@ -198,7 +209,7 @@ object ProjectConfiguration {
 		configurations.matching { it.name == "implementation" }.all {
 			extendsFrom(commonDependancy)
 		}
-		if(supportsJarInJar(stonecutter, modPlatformExtension.loader.get())) {
+		if(supportsJarInJar(modPlatformExtension.loader.get().loader)) {
 			pluginManager.withPlugin("gg.essential.loom") {
 				configurations.matching { it.name == "include" }.all {
 					extendsFrom(includeDependancy)

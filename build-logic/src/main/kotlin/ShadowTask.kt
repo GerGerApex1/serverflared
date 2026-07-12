@@ -8,6 +8,10 @@ import xyz.wagyourtail.jvmdg.gradle.task.DowngradeJar
 import xyz.wagyourtail.jvmdg.gradle.task.ShadeJar
 
 object ShadowTask {
+	fun Project.configureShadow() {
+		configureShadowJar()
+		createShadowImplConfiguration()
+	}
 	 fun Project.configureManagedDowngrade() {
 		project.tasks.named<RemapJarTask>("remapJar") {
 			dependsOn(tasks.named("shadowJar"))

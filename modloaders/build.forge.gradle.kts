@@ -1,6 +1,5 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import org.gradle.kotlin.dsl.named
-
 plugins {
 	id("mod-platform")
 	alias(libs.plugins.gradleup.shadow)
@@ -15,7 +14,7 @@ stonecutter {
 	properties.tags(version, loader)
 }
 platform {
-	loader = "forge"
+	loader.set(Loader.FORGE)
 	dependencies {
 		required("minecraft") {
 			forgeVersionRange =  "[${prop("deps.minecraft.min")}, ${prop("deps.minecraft.max")}]"

@@ -12,7 +12,7 @@ stonecutter {
 }
 java.toolchain.languageVersion = JavaLanguageVersion.of(25)
 platform {
-	loader = mcLoader
+	loader.set(Loader.valueOf(mcLoader.uppercase()))
 	dependencies {
 		required("minecraft") {
 			versionRange = ">=${prop("deps.minecraft.min")} <${prop("deps.minecraft.max")}"

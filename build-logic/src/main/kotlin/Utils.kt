@@ -29,13 +29,24 @@ object Utils {
 			else -> JavaLanguageVersion.of(8)
 		}
 	}
-	fun supportsJarInJar(stonecutter: StonecutterBuildExtension, loader: String): Boolean {
+	fun Project.supportsJarInJar(loader: String): Boolean {
+		val stonecutter = extensions.getByType<StonecutterBuildExtension>()
+
 		return when (loader) {
 			"fabric" -> true
 			"neoforge" -> true
 			"forge" -> stonecutter.eval(stonecutter.current.version, ">=1.18")
 			"deobfuscated" -> true
+			"spigot" -> false
 			else -> false
 		}
+	}
+	fun Project.isVersionDeobfuscated(): Boolean {
+		val stonecutter = extensions.getByType<StonecutterBuildExtension>()
+
+		return stonecutter.eval(
+			stonecutter.current.version,
+			">=26.1"
+		)
 	}
 }

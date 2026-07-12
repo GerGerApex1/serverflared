@@ -15,7 +15,7 @@ stonecutter {
 	properties.tags(version, loader)
 }
 platform {
-	loader = "neoforge"
+	loader.set(Loader.NEOFORGE)
 	dependencies {
 		required("minecraft") {
 			forgeVersionRange =  "[${prop("deps.minecraft.min")}, ${prop("deps.minecraft.max")}]"

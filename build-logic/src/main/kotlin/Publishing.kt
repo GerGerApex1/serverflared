@@ -35,19 +35,11 @@ object Publishing {
 				dryRun = true
 			}
 
-			// val jarTask = tasks.named(ext.jarTask.get()).map { it as Jar }
-			// val srcJarTask = tasks.named(ext.sourcesJarTask.get()).map { it as Jar }
 			val currentVersion = stonecutter.current.version
 			val deps = ext.dependencies
 
-			if (loader == "forge") {
-				//TODO: Implement shadowJar to conversion
-				val shadowJarTask = tasks.named("shadowJar").map { it as Jar }
-				file.set(shadowJarTask.flatMap { it.archiveFile })
-			} else {
-				val jarTask = tasks.named(ext.jarTask.get()).map { it as Jar }
-				file.set(jarTask.flatMap(Jar::getArchiveFile))
-			}
+			val jarTask = tasks.named("shadowJar").map { it as Jar }
+			file.set(jarTask.flatMap(Jar::getArchiveFile))
 			val srcJarTask = tasks.named(ext.sourcesJarTask.get()).map { it as Jar }
 
 			additionalFiles.from(srcJarTask.flatMap(Jar::getArchiveFile))
