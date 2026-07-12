@@ -1,12 +1,17 @@
 import dev.kikugie.stonecutter.build.StonecutterBuildExtension
 import org.gradle.api.JavaVersion
 import org.gradle.api.Project
+import org.gradle.api.plugins.JavaPluginExtension
+import org.gradle.internal.impldep.com.amazonaws.util.JavaVersionParser.getCurrentJavaVersion
 import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.gradle.kotlin.dsl.getByType
 
 object Utils {
 	fun Project.resolveJavaVersion(): JavaVersion {
 		val stonecutter = extensions.getByType<StonecutterBuildExtension>()
+		if(getConfiguredJavaLanguageVersion() != null) {
+			return JavaVersion.toVersion(getConfiguredJavaLanguageVersion()!!.asInt())
+		}
 		return when {
 			stonecutter.eval(stonecutter.current.version, ">=26.1") -> JavaVersion.VERSION_25
 			stonecutter.eval(stonecutter.current.version, ">=1.20.6") -> JavaVersion.VERSION_21
@@ -19,7 +24,9 @@ object Utils {
 
 	fun Project.resolveJavaLanguageVersion(): JavaLanguageVersion {
 		val stonecutter = extensions.getByType<StonecutterBuildExtension>()
-
+		if(getConfiguredJavaLanguageVersion() != null) {
+			return getConfiguredJavaLanguageVersion()!!
+		}
 		return when {
 			stonecutter.eval(stonecutter.current.version, ">=26.1") -> JavaLanguageVersion.of(25)
 			stonecutter.eval(stonecutter.current.version, ">=1.20.6") -> JavaLanguageVersion.of(21)
@@ -48,5 +55,13 @@ object Utils {
 			stonecutter.current.version,
 			">=26.1"
 		)
+	}
+	fun Project.getConfiguredJavaLanguageVersion(): JavaLanguageVersion? {
+		val javaExt = extensions.getByType<JavaPluginExtension>()
+		return if (javaExt.toolchain.languageVersion.isPresent) {
+			javaExt.toolchain.languageVersion.get()
+		} else {
+			null
+		}
 	}
 }
