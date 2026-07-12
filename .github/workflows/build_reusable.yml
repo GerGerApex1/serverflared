@@ -31,7 +31,7 @@ jobs:
 
             const folders = fs.readdirSync(root, { withFileTypes: true })
               .filter(d => d.isDirectory())
-              .map(d => d.name);
+              .map(d => `:modloaders:${d.name}`);
             console.log(folders)
             core.setOutput('matrix', JSON.stringify({ version: folders }));
             return JSON.stringify(folders);
