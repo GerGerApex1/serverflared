@@ -1,5 +1,6 @@
 import ShadowTask.configureDirectRemap
 import ShadowTask.configureManagedDowngrade
+import ShadowTask.configureSpigotShadowTask
 import Utils.resolveJavaVersion
 import Utils.supportsJarInJar
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
@@ -134,6 +135,9 @@ object ProjectConfiguration {
 				"discord_url" to prop("mod.discord_url"),
 				"dependencies" to dependencies
 			)
+			val spigotProps = mapOf(
+				"apiVersion" to prop("spigot.apiVersion"),
+			)
 			when (loader) {
 				Loader.FABRIC -> {
 					filesMatching("fabric.mod.json") {
@@ -175,7 +179,9 @@ object ProjectConfiguration {
 					)
 				}
 				Loader.SPIGOT -> {
-					filesMatching("plugin.yml") { expand(props) }
+					filesMatching("plugin.yml") {
+						expand(props + spigotProps)
+					}
 					exclude(
 						"META-INF/mods.toml",
 						"META-INF/neoforge.mods.toml",
@@ -215,21 +221,24 @@ object ProjectConfiguration {
 					extendsFrom(includeDependancy)
 				}
 			}
-		} else {
-			tasks.named<ShadowJar>("shadowJar") {
-				configurations = listOf(includeDependancy)
-			}
 		}
 		if(!stonecutter.eval(stonecutter.current.version, ">=26.1")) {
 			val needDowngrade = JavaVersion.current() > resolveJavaVersion()
 			afterEvaluate {
-				if (needDowngrade) {
-					configureManagedDowngrade()
+				if(modPlatformExtension.loader.get() == Loader.SPIGOT) {
+					afterEvaluate {
+						configureSpigotShadowTask()
+					}
 				} else {
-					configureDirectRemap()
+					if (needDowngrade) {
+						configureManagedDowngrade()
+					} else {
+						configureDirectRemap()
+					}
 				}
 			}
 		}
+
 	}
 	fun Project.registerBuildAndCollectTask(
 		extension: ModPlatformExtension,

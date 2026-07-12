@@ -38,8 +38,13 @@ object Publishing {
 			val currentVersion = stonecutter.current.version
 			val deps = ext.dependencies
 
-			val jarTask = tasks.named("shadowJar").map { it as Jar }
-			file.set(jarTask.flatMap(Jar::getArchiveFile))
+			if(loader == "spigot") {
+				val jarTask = tasks.named("shadeDowngradedApi").map { it as Jar };
+				file.set(jarTask.flatMap(Jar::getArchiveFile))
+			} else {
+				val jarTask = tasks.named("shadowJar").map { it as Jar };
+				file.set(jarTask.flatMap(Jar::getArchiveFile))
+			}
 			val srcJarTask = tasks.named(ext.sourcesJarTask.get()).map { it as Jar }
 
 			additionalFiles.from(srcJarTask.flatMap(Jar::getArchiveFile))

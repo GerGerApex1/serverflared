@@ -34,6 +34,7 @@ buildscript {
 	}
 }
 val loaders = listOf("forge", "fabric", "neoforge")
+val loadersNoForge = listOf("fabric", "neoforge")
 val minecraftVersions = listOf(
 	"1.8.9",
 	"1.9",
@@ -82,11 +83,16 @@ stonecutter {
 				}
 			}
 		}
-		createDeobfuscatedVersionDirectory(listOf("26.1"), listOf("fabric", "neoforge"))
-		createDeobfuscatedVersionDirectory(listOf("26.2"), listOf("fabric", "neoforge"))
 
+		// createDeobfuscatedVersionDirectory(listOf("26.1"), listOf("fabric", "neoforge"))
+		// createDeobfuscatedVersionDirectory(listOf("26.2"), listOf("fabric", "neoforge"))
+		createDeobfuscatedVersionDirectory(listOf("26.1", "26.2"), loadersNoForge)
 		createVersionDirectory(minecraftVersions, loaders)
 		vcsVersion = "1.21.1-fabric"
+	}
+	create("spigot") {
+		version("1.8.8-spigot").buildscript = "build.spigot.gradle.kts"
+		version("1.16.1-spigot").buildscript = "build.spigot.gradle.kts"
 	}
 }
 
@@ -96,5 +102,4 @@ fun isSupported(minorVersion: Int, loader: String): Boolean =
 		"neoforge" -> minorVersion >= 20
 		else -> true
 	}
-
 include("common")

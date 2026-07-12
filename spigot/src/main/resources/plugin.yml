@@ -1,0 +1,9 @@
+name: ${name}
+version: ${version}
+main: "${group}.${id}.platform.spigot.SpigotEntrypoint"
+description: ${description}
+author: [ ${authors} ]
+contributors: [${contributors}]
+website: ${homepage_url}
+load: STARTUP
+${apiVersion}

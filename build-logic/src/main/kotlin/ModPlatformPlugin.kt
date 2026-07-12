@@ -28,9 +28,10 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 		val stonecutter = extensions.getByType<StonecutterBuildExtension>()
 
 		val inferredLoader = project.buildFile.name.substringAfter('.').replace(".gradle.kts", "")
+		val jarTaskName = if (inferredLoader == "spigot") "shadeDowngradedApi" else "shadowJar"
 		val extension = extensions.create("platform", ModPlatformExtension::class.java).apply {
 			loader.convention(Loader.valueOf(inferredLoader.uppercase()))
-			jarTask.convention("shadowJar")
+			jarTask.convention(jarTaskName)
 			sourcesJarTask.convention("sourcesJar")
 		}
 
@@ -53,7 +54,6 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 
 	private fun Project.configureProject(extension: ModPlatformExtension) {
 		val loader = extension.loader.get()
-		println(loader)
 		val modId = prop("mod.id")
 		val modVersion = prop("mod.version")
 		val channelTag = prop("mod.channel_tag")

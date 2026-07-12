@@ -53,6 +53,6 @@ public interface Platform {
 	ModLoader getPlatformName();
 
 	enum ModLoader {
-		FABRIC, NEOFORGE, FORGE, QUILT
+		FABRIC, NEOFORGE, FORGE, QUILT, SPIGOT
 	}
 }

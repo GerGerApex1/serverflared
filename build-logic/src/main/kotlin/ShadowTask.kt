@@ -42,7 +42,24 @@ object ShadowTask {
 			}
 		}
 	}
+	fun Project.configureSpigotShadowTask() {
+		project.tasks.named<ShadowJar>("shadowJar") {
+			archiveClassifier.set("shadow")
+		}
 
+		project.tasks.named<DowngradeJar>("downgradeJar") {
+			dependsOn(tasks.named("shadowJar"))
+			inputFile.set(tasks.named<ShadowJar>("shadowJar").flatMap { it.archiveFile })
+			archiveClassifier = "downgradedJar"
+			downgradeTo = resolveJavaVersion()
+		}
+
+		project.tasks.named<ShadeJar>("shadeDowngradedApi") {
+			dependsOn(tasks.named("downgradeJar"))
+			inputFile.set(tasks.named<DowngradeJar>("downgradeJar").flatMap { it.archiveFile })
+			archiveClassifier = ""
+		}
+	}
 	fun Project.configureShadowJar() {
 		pluginManager.withPlugin("com.gradleup.shadow") {
 			tasks.named<ShadowJar>("shadowJar") {
@@ -58,8 +75,12 @@ object ShadowTask {
 			isCanBeResolved = true
 			isCanBeConsumed = false
 		}
+		val includeDep = configurations.named("includeDep")
+		val commonDep = configurations.named("common")
+
 		tasks.named<ShadowJar>("shadowJar") {
-			configurations = listOf(shadowImpl)
+			configurations = listOf(includeDep.get(), commonDep.get(), shadowImpl)
+			archiveClassifier=""
 		}
 	}
 }
