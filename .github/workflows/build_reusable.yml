@@ -27,11 +27,25 @@ jobs:
             const fs = require('fs');
             const path = require('path');
 
-            const root = path.join(process.cwd(), 'modloaders', 'versions');
+            const modloadersRoot = path.join(process.cwd(), 'modloaders', 'versions');
+            const spigotRoot = path.join(process.cwd(), 'spigot', 'versions');
 
-            const folders = fs.readdirSync(root, { withFileTypes: true })
-              .filter(d => d.isDirectory())
-              .map(d => `:modloaders:${d.name}`);
+            let folders = [];
+
+            if (fs.existsSync(modloadersRoot)) {
+              const modloadersFolders = fs.readdirSync(modloadersRoot, { withFileTypes: true })
+                .filter(d => d.isDirectory())
+                .map(d => `:modloaders:${d.name}`);
+              folders.push(...modloadersFolders);
+            }
+
+            if (fs.existsSync(spigotRoot)) {
+              const spigotFolders = fs.readdirSync(spigotRoot, { withFileTypes: true })
+                .filter(d => d.isDirectory())
+                .map(d => `:spigot:${d.name}`);
+              folders.push(...spigotFolders);
+            }
+
             console.log(folders)
             core.setOutput('matrix', JSON.stringify({ version: folders }));
             return JSON.stringify(folders);
