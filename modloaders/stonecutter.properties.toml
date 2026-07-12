@@ -1,15 +1,3 @@
-mod.id="serverflared"
-mod.name="ServerFlared"
-mod.group="me.gergerapex1"
-mod.version="1.0.0"
-mod.channel_tag="-beta.5"
-mod.authors="GerGerAypex1"
-mod.license="GPL3.0"
-mod.description="Allows you to expose your Minecraft server using automatic Cloudflare Tunnel setup."
-mod.sources_url="https://github.com/gergerapex1/serverflared"
-mod.homepage_url="https://github.com/gergerapex1/serverflared"
-mod.issues_url="https://github.com/gergerapex1/serverflared/issues"
-
 ["fabric"]
 loader="0.12.0"
 
