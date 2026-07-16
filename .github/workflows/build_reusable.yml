@@ -98,7 +98,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: build-artifacts-${{ matrix.version }}
+          name: build-artifacts-${{ replace(replace(matrix.version, ':modloaders:', ''), ':spigot:', '') }}
           path: build/libs/
   collect:
     name: Collect All Artifacts
