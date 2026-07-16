@@ -105,11 +105,6 @@ jobs:
           name: ${{ steps.prepare-artifact-name.outputs.name }}
           path: build/libs/
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-artifacts-${{ replace(replace(matrix.version, ':modloaders:', ''), ':spigot:', '') }}
-          path: build/libs/
   collect:
     name: Collect All Artifacts
     runs-on: ubuntu-latest
