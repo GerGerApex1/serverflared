@@ -95,6 +95,16 @@ jobs:
       - name: Build with Gradle
         run: ./gradlew ${{ matrix.version }}:buildAndCollect --no-daemon
 
+      - name: Prepare artifact name
+        id: prepare-artifact-name
+        run: echo "name=$(./scripts/normalize-artifact-name.sh '${{ matrix.version }}')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.prepare-artifact-name.outputs.name }}
+          path: build/libs/
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
