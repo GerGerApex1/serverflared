@@ -80,7 +80,7 @@ jobs:
         run: |
           VERSION=$(grep '^mod.version=' gradle.properties | cut -d'=' -f2)
           VERSION="${VERSION//\"/}"
-          CHANNEL_TAG=$(grep '^mod.channel_tag='  | cut -d'=' -f2)
+          CHANNEL_TAG=$(grep '^mod.channel_tag=' gradle.properties | cut -d'=' -f2)
           CHANNEL_TAG="${CHANNEL_TAG//\"/}"
           PUBLISH_GITHUB=$(grep '^publish.github=' gradle.properties | cut -d'=' -f2 || echo "false")
           FULL_VERSION="${VERSION}${CHANNEL_TAG}"
