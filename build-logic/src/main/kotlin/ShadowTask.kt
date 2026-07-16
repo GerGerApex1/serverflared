@@ -16,7 +16,7 @@ object ShadowTask {
 		project.tasks.named<RemapJarTask>("remapJar") {
 			dependsOn(tasks.named("shadowJar"))
 			inputFile.set(tasks.named<ShadowJar>("shadowJar").flatMap { it.archiveFile })
-			archiveClassifier.set("")
+			archiveClassifier.set("remapped")
 		}
 
 		project.tasks.named<DowngradeJar>("downgradeJar") {
