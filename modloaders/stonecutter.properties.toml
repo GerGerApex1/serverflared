@@ -184,3 +184,19 @@ deps.fabric-api="0.152.1+26.2"
 
 ["26.2-neoforge"]
 loader.neoforge="26.2.0.7-beta"
+
+["26.3"]
+loader.minecraft="26.3"
+deps.minecraft.min="26.3"
+deps.minecraft.max="26.3"
+
+publish.additionalVersions=""
+
+["26.3-fabric"]
+deps.fabric-api="0.163.0+26.2"
+
+#["26.2-forge"]
+#loader.forge="52.1.8"
+
+["26.3-neoforge"]
+loader.neoforge="26.3.0.83"

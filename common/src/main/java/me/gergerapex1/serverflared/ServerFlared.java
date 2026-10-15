@@ -109,7 +109,7 @@ public class ServerFlared {
         Constants.LOG.debug("Starting tunnel in background...");
         localHandler.createTunnelConfig(info.getId(), ModPlatformInstance.xplat().getLocalAddress(), ModPlatformInstance.xplat().getServerPort());
         CompletableFuture.runAsync(ServerFlared::runTunnelBackground);
-        Constants.LOG.debug("Tunnel started!");
+        Constants.LOG.info("Tunnel started! You can join the server with " + configManager.CONFIG.getHostName());
     }
     public static void cleanup() {
 		Constants.LOG.info("Stopping serverflared");

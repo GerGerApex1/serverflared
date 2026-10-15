@@ -12,7 +12,7 @@ plugins {
 //Illegal string version part; expected [a-zA-Z0-9_]:
 //| spigot-modern
 // wtf?
-stonecutter active "1.8.8-spigot"
+stonecutter active "1.16.1-spigot"
 
 for (version in stonecutter.versions.map { it.version }.distinct()) tasks.register("publish$version") {
 	group = "publishing"

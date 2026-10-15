@@ -11,17 +11,18 @@ public class SpigotEntrypoint extends JavaPlugin {
 	public void onEnable() {
 		ModPlatformInstance.setPlatform(new SpigotPlatform(this));
 		ModPlatformInstance.onInitialize();
+		ServerFlared.handleTunnel();
 		//? if legacySpigot {
-		Bukkit.getScheduler().runTaskLater(this, new Runnable() {
+		/*Bukkit.getScheduler().runTaskLater(this, new Runnable() {
 			@Override
 			public void run() {
 				ServerFlared.startedServer();
 			}
 		}, 40L);
 
-		//?} else {
-		/*Bukkit.getPluginManager().registerEvents(new SpigotListeners(), this);
-		*///? }
+		*///?} else {
+		Bukkit.getPluginManager().registerEvents(new SpigotListeners(), this);
+		//? }
 	}
 
 	@Override

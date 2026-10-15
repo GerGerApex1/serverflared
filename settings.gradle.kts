@@ -86,7 +86,7 @@ stonecutter {
 
 		// createDeobfuscatedVersionDirectory(listOf("26.1"), listOf("fabric", "neoforge"))
 		// createDeobfuscatedVersionDirectory(listOf("26.2"), listOf("fabric", "neoforge"))
-		createDeobfuscatedVersionDirectory(listOf("26.1", "26.2"), loadersNoForge)
+		createDeobfuscatedVersionDirectory(listOf("26.1", "26.2", "26.3"), loadersNoForge)
 		createVersionDirectory(minecraftVersions, loaders)
 		vcsVersion = "1.21.1-fabric"
 	}
