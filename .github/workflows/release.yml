@@ -18,53 +18,11 @@ env:
 jobs:
   build:
     uses: ./.github/workflows/build_reusable.yml
-  define-matrix:
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.result }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-      - id: set-matrix
-        name: Set Matrix
-        uses: actions/github-script@v9
-        with:
-          result-encoding: string
-          script: |
-            const fs = require('fs');
-            const path = require('path');
 
-            const modloadersRoot = path.join(process.cwd(), 'modloaders', 'versions');
-            const spigotRoot = path.join(process.cwd(), 'spigot', 'versions');
-
-            let folders = [];
-
-            if (fs.existsSync(modloadersRoot)) {
-              const modloadersFolders = fs.readdirSync(modloadersRoot, { withFileTypes: true })
-                .filter(d => d.isDirectory())
-                .map(d => `:modloaders:${d.name}`);
-              folders.push(...modloadersFolders);
-            }
-
-            if (fs.existsSync(spigotRoot)) {
-              const spigotFolders = fs.readdirSync(spigotRoot, { withFileTypes: true })
-                .filter(d => d.isDirectory())
-                .map(d => `:spigot:${d.name}`);
-              folders.push(...spigotFolders);
-            }
-
-            console.log(folders)
-            core.setOutput('matrix', JSON.stringify({ version: folders }));
-            return JSON.stringify(folders);
-      - name: Output Matrix
-        id: output-matrix
-        run: echo "${{ steps.set-matrix.outputs.result }}"
   prepare:
     name: Prepare Release
     runs-on: ubuntu-latest
-    needs: [build, define-matrix]
+    needs: [build]
     permissions:
       contents: write
 
@@ -113,7 +71,7 @@ jobs:
 
           echo "Validating tag '$TAG' against version '$FULL_VERSION'..."
           if [[ "$TAG" != "$FULL_VERSION" ]]; then
-            echo "::error::Tag '$TAG' does not match version '$FULL_VERSION' in stonecutter.properties.toml"
+            echo "::error::Tag '$TAG' does not match version '$FULL_VERSION' in gradle.properties"
             echo "Deleting tag and release..."
 
             if gh release view "$TAG" &>/dev/null; then
@@ -135,7 +93,7 @@ jobs:
   github-release:
     name: Release to GitHub
     runs-on: ubuntu-latest
-    needs: [prepare, define-matrix]
+    needs: [prepare]
     if: needs.prepare.outputs.publish_github == 'true'
     permissions:
       contents: write
@@ -186,19 +144,17 @@ jobs:
               gh release delete-asset "$TAG" "$NAME" -y || true
               gh release upload "$TAG" "$FILE" --clobber
             done
-           fi
-
+          fi
 
   platform-release:
-    name: Release to Platforms (${{ matrix.version }})
+    name: Release to Platforms (${{ matrix.group }})
     runs-on: ubuntu-latest
-    needs: [ prepare, define-matrix ]
+    needs: [build, prepare]
     continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
-        # doing this live a caveman
-        version: ${{ fromJSON(needs.define-matrix.outputs.matrix) }}
+        include: ${{ fromJSON(needs.build.outputs.matrix) }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -227,18 +183,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: wrapper
+          cache-read-only: true
 
-      - name: Cache Gradle packages
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ matrix.version }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-${{ matrix.version }}-
-            ${{ runner.os }}-gradle-
       # TODO: Add curseforge page
       - name: Publish to Platforms
         run: |
-          ./gradlew ${{ matrix.version }}:publishMods --stacktrace
+          ./gradlew ${{ matrix.publish_tasks }} -Pci.versions="${{ matrix.versions }}" --no-daemon --stacktrace

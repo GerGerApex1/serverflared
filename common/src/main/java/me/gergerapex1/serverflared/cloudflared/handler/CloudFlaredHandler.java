@@ -189,21 +189,47 @@ public class CloudFlaredHandler {
         }
         return false;
     }
+	private static final Pattern LOGIN_URL_REGEX = Pattern.compile("(https://dash\\.cloudflare\\.com/\\S+|https?://\\S+)", Pattern.CASE_INSENSITIVE);
+
 	public CompletableFuture<Boolean> authenticate() {
+		return authenticate(null);
+	}
+
+	public CompletableFuture<Boolean> authenticate(java.util.function.Consumer<String> urlCallback) {
 		CompletableFuture<Boolean> result = new CompletableFuture<>();
+		AtomicBoolean urlCaptured = new AtomicBoolean(false);
+		java.util.function.Consumer<String> lineHandler = line -> {
+			if (line == null) {
+				return;
+			}
+			Matcher loginMatcher = LOGIN_URL_REGEX.matcher(line.trim());
+			String matchedUrl = null;
+			if (loginMatcher.find()) {
+				matchedUrl = loginMatcher.group(1);
+			} else {
+				Matcher fallbackMatcher = URL_REGEX.matcher(line.trim());
+				if (fallbackMatcher.matches()) {
+					matchedUrl = fallbackMatcher.group();
+				}
+			}
+			if (matchedUrl != null && urlCaptured.compareAndSet(false, true)) {
+				Constants.LOG.info("Please authenticate cloudflared by visiting the following URL in your browser:");
+				Constants.LOG.info(matchedUrl);
+				Constants.LOG.info("The program will open a browser window in the machine running this server.");
+				Constants.LOG.info("If you are running this server on a headless machine, please copy and paste the URL into a browser on another device.");
+				if (urlCallback != null) {
+					urlCallback.accept(matchedUrl);
+				}
+			}
+		};
 		try {
 			Process process = processHandler.runAsync(
 					new SubCommand(Constants.CMD_TUNNEL, Constants.CMD_LOGIN),
-					line -> {
-						Matcher m = URL_REGEX.matcher(line);
-						if (m.matches()) {
-							Constants.LOG.info("Please authenticate cloudflared by visiting the following URL in your browser:");
-							Constants.LOG.info(m.group());
-							Constants.LOG.info("The program will open a browser window in the machine running this server.");
-							Constants.LOG.info("If you are running this server on a headless machine, please copy and paste the URL into a browser on another device.");
-						}
-					},
-					err -> Constants.LOG.error(err)
+					lineHandler,
+					err -> {
+						Constants.LOG.error(err);
+						lineHandler.accept(err);
+					}
 			);
 
 			Thread authShutdownHook = new Thread(() -> {

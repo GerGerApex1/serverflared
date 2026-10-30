@@ -14,7 +14,7 @@ stonecutter active file(".sc_active_version")
 
 for (version in stonecutter.versions.map { it.version }.distinct()) tasks.register("publish$version") {
 	group = "publishing"
-	dependsOn(stonecutter.tasks.named("publishMods") { metadata.version == version })
+	dependsOn(stonecutter.tasks.named("publishMods") { metadata.version == version && project.tasks.findByName("publishMods") != null })
 }
 
 stonecutter tasks {

@@ -14,6 +14,7 @@
   "icon": "assets/icon.png",
   "license": "${license}",
   "environment": "server",
+  "accessWidener": "serverflared.accesswidener",
   "entrypoints": {
     "main": [
       "${group}.${id}.platform.fabric.FabricEntrypoint"

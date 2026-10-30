@@ -4,6 +4,7 @@ package me.gergerapex1.serverflared.platform.fabric;
 
 import me.gergerapex1.serverflared.ModPlatformInstance;
 import me.gergerapex1.serverflared.ServerFlared;
+import me.gergerapex1.serverflared.platform.common.BrigadierCommand;
 
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -15,7 +16,10 @@ public class FabricEntrypoint implements ModInitializer {
 		ModPlatformInstance.setPlatform(new FabricPlatform());
 		ModPlatformInstance.onInitialize();
 		FabricPlatform.initialize();
-		ServerLifecycleEvents.SERVER_STARTING.register(event -> ServerFlared.handleTunnel());
+		ServerLifecycleEvents.SERVER_STARTING.register(event -> {
+			BrigadierCommand.register(event);
+			ServerFlared.handleTunnel();
+		});
 		ServerLifecycleEvents.SERVER_STOPPING.register(event -> ServerFlared.cleanup());
 		ServerLifecycleEvents.SERVER_STARTED.register(event -> ServerFlared.startedServer());
 	}

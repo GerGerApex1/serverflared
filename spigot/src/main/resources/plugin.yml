@@ -7,3 +7,13 @@ contributors: [${contributors}]
 website: ${homepage_url}
 load: STARTUP
 ${apiVersion}
+commands:
+  serverflared:
+    description: Manage the ServerFlared Cloudflare tunnel
+    aliases: [sf]
+    usage: /<command> <status|reload|start|stop|login|clientcmd>
+permissions:
+  serverflared.admin:
+    description: Allows access to /serverflared administration commands
+    default: op
+

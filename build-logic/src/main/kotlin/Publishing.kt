@@ -38,16 +38,26 @@ object Publishing {
 			val currentVersion = stonecutter.current.version
 			val deps = ext.dependencies
 
-			if(loader == "spigot") {
-				val jarTask = tasks.named("shadeDowngradedApi").map { it as Jar };
+			val prebuiltDir = rootProject.file("build/libs/$modVersion")
+			val prebuiltJar = prebuiltDir.resolve("${prop("mod.id")}-$fullVersion.jar")
+			val prebuiltSourcesJar = prebuiltDir.resolve("${prop("mod.id")}-$fullVersion-sources.jar")
+
+			if (prebuiltJar.exists()) {
+				file.set(prebuiltJar)
+			} else if (loader == "spigot") {
+				val jarTask = tasks.named("shadeDowngradedApi").map { it as Jar }
 				file.set(jarTask.flatMap(Jar::getArchiveFile))
 			} else {
-				val jarTask = tasks.named("shadowJar").map { it as Jar };
+				val jarTask = tasks.named("shadowJar").map { it as Jar }
 				file.set(jarTask.flatMap(Jar::getArchiveFile))
 			}
-			val srcJarTask = tasks.named(ext.sourcesJarTask.get()).map { it as Jar }
 
-			additionalFiles.from(srcJarTask.flatMap(Jar::getArchiveFile))
+			if (prebuiltSourcesJar.exists()) {
+				additionalFiles.from(prebuiltSourcesJar)
+			} else {
+				val srcJarTask = tasks.named(ext.sourcesJarTask.get()).map { it as Jar }
+				additionalFiles.from(srcJarTask.flatMap(Jar::getArchiveFile))
+			}
 			type = releaseType
 			version = fullVersion
 			changelog.set(rootProject.file("CHANGELOG.md").readText())

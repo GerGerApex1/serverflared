@@ -14,6 +14,9 @@ stonecutter {
 	val (version, loader) = current.project.split('-', limit = 2)
 	properties.tags(version, loader)
 }
+loom {
+	accessWidenerPath = rootProject.file("modloaders/src/main/resources/serverflared.accesswidener")
+}
 platform {
 	loader.set(Loader.FABRIC)
 	dependencies {
