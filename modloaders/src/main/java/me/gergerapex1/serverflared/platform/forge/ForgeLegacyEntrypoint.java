@@ -1,4 +1,3 @@
-
 package me.gergerapex1.serverflared.platform.forge;
 
 //? if forge && legacy_forge {
@@ -7,6 +6,7 @@ import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.Mod.EventHandler;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLServerStartedEvent;
+import net.minecraftforge.fml.common.event.FMLServerStartingEvent;
 import net.minecraftforge.fml.common.event.FMLPostInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLServerStoppingEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -24,6 +24,10 @@ public class ForgeLegacyEntrypoint {
 	@EventHandler
 	public void serverStarting(FMLPostInitializationEvent event) {
 		ServerFlared.handleTunnel();
+	}
+	@EventHandler
+	public void onServerStarting(FMLServerStartingEvent event) {
+		event.registerServerCommand(new ForgeLegacyCommand());
 	}
 	@EventHandler
 	public void serverStopping(FMLServerStoppingEvent event) {

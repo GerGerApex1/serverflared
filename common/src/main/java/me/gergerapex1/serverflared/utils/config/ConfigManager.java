@@ -36,8 +36,12 @@ public class ConfigManager {
             Constants.LOG.error("Failed to load config: {}", e.getMessage());
         }
     }
+	@SuppressWarnings("unchecked")
 	private void migrateConfigFile(Path configFilePath) throws IOException {
 		Map<String, Object> data = handler.readFromYaml(configFilePath.toString(), Map.class);
+		if (data == null) {
+			return;
+		}
 
 		boolean migrated = false;
 
@@ -53,6 +57,19 @@ public class ConfigManager {
 			migrated = true;
 		}
 
+		if (!data.containsKey("commandPermissionMode")) {
+			if (data.containsKey("permissionMode")) {
+				data.put("commandPermissionMode", String.valueOf(data.remove("permissionMode")));
+			} else if (data.containsKey("consoleOnlyCommands")) {
+				Object val = data.remove("consoleOnlyCommands");
+				boolean consoleOnly = Boolean.TRUE.equals(val) || "true".equalsIgnoreCase(String.valueOf(val));
+				data.put("commandPermissionMode", consoleOnly ? "CONSOLE_ONLY" : "OP_OR_PERMISSION");
+			} else {
+				data.put("commandPermissionMode", "OP_OR_PERMISSION");
+			}
+			migrated = true;
+		}
+
 		if (migrated) {
 			// Rewrite file with migrated keys AND regenerated comments
 			Config tempConfig = handler.readFromYaml(configFilePath.toString(), Config.class);
@@ -60,7 +77,31 @@ public class ConfigManager {
 			Constants.LOG.debug("Config migrated and comments regenerated");
 		}
 	}
-    public void saveConfig() {
+
+	public synchronized boolean reload() {
+		Path configFilePath = getConfigFilePath();
+		try {
+			createConfigFileIfNotExist(configFilePath);
+			migrateConfigFile(configFilePath);
+			Config reloaded = handler.readFromYaml(configFilePath.toString(), Config.class);
+			if (!isConfigValid(reloaded) || isFileEmpty(configFilePath)) {
+				Constants.LOG.warn("Reloaded config is empty or contains invalid values.");
+				return false;
+			}
+			this.CONFIG = reloaded;
+			this.firstTime = isDefaultHostName(reloaded.getHostName());
+			return true;
+		} catch (Exception e) {
+			Constants.LOG.error("Failed to reload config: {}", e.getMessage());
+			return false;
+		}
+	}
+
+	private boolean isDefaultHostName(String host) {
+		return host == null || "minecraftsubdomain.yourdomain.net".equalsIgnoreCase(host.trim());
+	}
+
+    public synchronized void saveConfig() {
         Path configFilePath = getConfigFilePath();
         try {
             handler.writeToYaml(configFilePath.toString(), CONFIG);
