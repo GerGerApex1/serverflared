@@ -21,6 +21,7 @@ ServerFlared is a mod that automatically creates and manages a Cloudflare Tunnel
 * Automatic [cloudflared](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/) download – Downloads the required [cloudflared](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/) binary automatically, reducing manual installation steps. (It automatically works with existing [cloudflared](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/) installation in your machine!)
 * Seamless tunnel configuration – Generates and maintains the necessary tunnel configuration, so you only need to specify their tunnel and hostname.
 * Integrated tunnel lifecycle – Starts and stops the Cloudflare Tunnel alongside the Minecraft server, ensuring the tunnel is always available while the server is running.
+* Commands - Provides commands to manage the tunnel, including starting, stopping, and checking the status of the tunnel. And a command for clients to connect to the server through the tunnel.
 * Secure remote access – Allows players to connect through a Cloudflare-managed hostname instead of exposing the server's IP address.
   Ideal for NAT-restricted networks – Makes hosting possible even when traditional port forwarding is unavailable or impractical. Also works best small servers (e.g. with your friends)
 
