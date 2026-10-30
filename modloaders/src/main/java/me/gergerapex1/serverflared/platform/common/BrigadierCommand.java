@@ -105,12 +105,7 @@ public final class BrigadierCommand {
         return new CommandSenderAdapter() {
             @Override
             public boolean isConsole() {
-                Entity entity = source.getEntity();
-                if (entity != null) {
-                    return false;
-                }
-                String name = source.getTextName();
-                return !"@".equals(name);
+                return source.source instanceof MinecraftServer;
             }
 
             @Override

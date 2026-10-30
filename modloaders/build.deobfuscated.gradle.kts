@@ -10,7 +10,27 @@ val (version, mcLoader) = stonecutter.current.project.split('-', limit = 2)
 stonecutter {
 	properties.tags(version, mcLoader)
 }
+loom {
+	accessWidenerPath = rootProject.file("modloaders/src/main/resources/serverflared.official.accesswidener")
+}
 java.toolchain.languageVersion = JavaLanguageVersion.of(25)
+if (mcLoader == "fabric") {
+	tasks.processResources {
+		filesMatching("fabric.mod.json") {
+			filter { line ->
+				line.replace(
+					"\"accessWidener\": \"serverflared.accesswidener\"",
+					"\"accessWidener\": \"serverflared.official.accesswidener\""
+				)
+			}
+		}
+	}
+}
+if (mcLoader == "neoforge") {
+	tasks.processResources {
+		from(rootProject.file("modloaders/src/main/resources/neoforge"))
+	}
+}
 platform {
 	loader.set(Loader.valueOf(mcLoader.uppercase()))
 	dependencies {

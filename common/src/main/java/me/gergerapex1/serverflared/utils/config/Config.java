@@ -74,10 +74,8 @@ public class Config{
 
 	@JsonIgnore
 	public boolean isConsoleOnly() {
-		if (commandPermissionMode == null) {
-			return false;
-		}
 		String mode = commandPermissionMode.trim();
-		return "CONSOLE_ONLY".equalsIgnoreCase(mode) || "true".equalsIgnoreCase(mode);
+		boolean permissive = "OP_OR_PERMISSION".equalsIgnoreCase(mode) || "false".equalsIgnoreCase(mode);
+		return !permissive;
 	}
 }

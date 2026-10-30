@@ -59,7 +59,7 @@ public class ForgeLegacyCommand extends CommandBase {
         return new CommandSenderAdapter() {
             @Override
             public boolean isConsole() {
-                return sender instanceof MinecraftServer || (sender.getCommandSenderEntity() == null && "Server".equalsIgnoreCase(sender.getName()));
+                return sender instanceof MinecraftServer;
             }
 
             @Override

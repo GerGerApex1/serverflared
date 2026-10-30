@@ -323,6 +323,10 @@ public class ServerFlared {
 					sender.sendMessage("\u00A7e[ServerFlared] Config reloaded, but cloudflared is not authenticated. Run /serverflared login to authenticate.");
 					return;
 				}
+				if (configManager.firstTime) {
+					sender.sendMessage("\u00A7e[ServerFlared] Config reloaded, but hostName still uses the placeholder value. Update config.yml, then run /serverflared reload.");
+					return;
+				}
 				localHandler.setState(LocalManagedTunnel.TunnelState.STARTING);
 				localHandler.setLastConnectionDetail("Re-initializing tunnel after reload...");
 				initiateTunnel();
