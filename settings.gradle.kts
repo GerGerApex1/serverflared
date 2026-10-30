@@ -59,40 +59,56 @@ val deobfuscatedMinecraftVersions = listOf(
 	"26.2"
 )
  */
+val ciVersions = providers.gradleProperty("ci.versions").orNull
+	?.split(",", ";", " ")
+	?.map { it.trim().removePrefix(":modloaders:").removePrefix(":spigot:") }
+	?.filter { it.isNotEmpty() }
+	?.toSet()
+
+fun shouldInclude(projectName: String): Boolean =
+	ciVersions == null || projectName in ciVersions
+
 stonecutter {
-	create("modloaders") {
-		fun createVersionDirectory(mcVersionList: List<String>, loaderList: List<String>) {
-			for (mcVersion in mcVersionList) {
-				for (loader in loaderList) {
-					val minorVersion = mcVersion.split(".").getOrNull(1)?.toIntOrNull() ?: continue
-					if (!isSupported(minorVersion, loader)) continue
-
-
-					val buildScript = "build.$loader.gradle.kts"
-					version("$mcVersion-$loader", mcVersion).buildscript = buildScript
-					println("Adding version $mcVersion with loader $loader")
-				}
+	val modloaderEntries = mutableListOf<Triple<String, String, String>>()
+	for (mcVersion in listOf("26.1", "26.2", "26.3")) {
+		for (loader in loadersNoForge) {
+			val projectName = "$mcVersion-$loader"
+			if (shouldInclude(projectName)) {
+				modloaderEntries.add(Triple(projectName, mcVersion, "build.deobfuscated.gradle.kts"))
 			}
 		}
-		fun createDeobfuscatedVersionDirectory(mcVersionList: List<String>, loaderList: List<String>) {
-			for (mcVersion in mcVersionList) {
-				for (loader in loaderList) {
-					val buildScript = "build.deobfuscated.gradle.kts"
-					version("$mcVersion-$loader", mcVersion).buildscript = buildScript
-					println("Adding deobfuscated version $mcVersion with loader $loader")
-				}
-			}
-		}
-
-		// createDeobfuscatedVersionDirectory(listOf("26.1"), listOf("fabric", "neoforge"))
-		// createDeobfuscatedVersionDirectory(listOf("26.2"), listOf("fabric", "neoforge"))
-		createDeobfuscatedVersionDirectory(listOf("26.1", "26.2", "26.3"), loadersNoForge)
-		createVersionDirectory(minecraftVersions, loaders)
-		vcsVersion = "1.21.1-fabric"
 	}
-	create("spigot") {
-		version("1.8.8-spigot").buildscript = "build.spigot.gradle.kts"
-		version("1.16.1-spigot").buildscript = "build.spigot.gradle.kts"
+	for (mcVersion in minecraftVersions) {
+		for (loader in loaders) {
+			val minorVersion = mcVersion.split(".").getOrNull(1)?.toIntOrNull() ?: continue
+			if (!isSupported(minorVersion, loader)) continue
+			val projectName = "$mcVersion-$loader"
+			if (shouldInclude(projectName)) {
+				modloaderEntries.add(Triple(projectName, mcVersion, "build.$loader.gradle.kts"))
+			}
+		}
+	}
+
+	if (modloaderEntries.isNotEmpty()) {
+		create("modloaders") {
+			for ((projectName, mcVersion, buildScript) in modloaderEntries) {
+				version(projectName, mcVersion).buildscript = buildScript
+			}
+			vcsVersion = if (modloaderEntries.any { it.first == "1.21.1-fabric" }) {
+				"1.21.1-fabric"
+			} else {
+				modloaderEntries.first().first
+			}
+		}
+	}
+
+	val spigotEntries = listOf("1.8.8-spigot", "1.16.1-spigot").filter(::shouldInclude)
+	if (spigotEntries.isNotEmpty()) {
+		create("spigot") {
+			for (projectName in spigotEntries) {
+				version(projectName).buildscript = "build.spigot.gradle.kts"
+			}
+		}
 	}
 }
 
