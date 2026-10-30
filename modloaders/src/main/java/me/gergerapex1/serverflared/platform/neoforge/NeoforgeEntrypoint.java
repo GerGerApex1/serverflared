@@ -9,6 +9,7 @@ import net.neoforged.fml.common.Mod;
 import me.gergerapex1.serverflared.Constants;
 import me.gergerapex1.serverflared.ModPlatformInstance;
 import me.gergerapex1.serverflared.ServerFlared;
+import me.gergerapex1.serverflared.platform.common.BrigadierCommand;
 
 @Mod(Constants.MOD_ID)
 public class NeoforgeEntrypoint {
@@ -20,6 +21,7 @@ public class NeoforgeEntrypoint {
 		NeoForge.EVENT_BUS.addListener(NeoforgeEntrypoint::serverStarted);
 	}
     private static void serverStarting(ServerStartingEvent event) {
+    	BrigadierCommand.register(event.getServer());
     	ServerFlared.handleTunnel();
     }
     private static void serverStopping(ServerStoppingEvent event) {

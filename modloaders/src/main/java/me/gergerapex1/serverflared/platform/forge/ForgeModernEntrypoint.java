@@ -10,6 +10,7 @@ import net.minecraftforge.fml.common.Mod;
 import me.gergerapex1.serverflared.Constants;
 import me.gergerapex1.serverflared.ModPlatformInstance;
 import me.gergerapex1.serverflared.ServerFlared;
+import me.gergerapex1.serverflared.platform.common.BrigadierCommand;
 //$ fml_serverevents
 import net.minecraftforge.event.server.*;
 @Mod(Constants.MOD_ID)
@@ -22,6 +23,7 @@ public class ForgeModernEntrypoint {
 	}
 	@SubscribeEvent
     public void serverStarting(ServerStartingEvent event) {
+        BrigadierCommand.register(event.getServer());
         ServerFlared.handleTunnel();
     }
     @SubscribeEvent

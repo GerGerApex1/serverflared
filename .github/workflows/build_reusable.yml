@@ -4,7 +4,10 @@ on:
     outputs:
       artifact-name:
         description: "Name of the uploaded build artifact"
-        value: ${{ jobs.build.outputs.artifact-name }}
+        value: ${{ jobs.collect.outputs.artifact-name }}
+      matrix:
+        description: "Grouped build matrix JSON"
+        value: ${{ jobs.define-matrix.outputs.matrix }}
 permissions:
   contents: read
 
@@ -19,7 +22,7 @@ jobs:
         with:
           fetch-depth: 1
       - id: set-matrix
-        name: Set Matrix
+        name: Set Grouped Matrix
         uses: actions/github-script@v9
         with:
           result-encoding: string
@@ -30,38 +33,68 @@ jobs:
             const modloadersRoot = path.join(process.cwd(), 'modloaders', 'versions');
             const spigotRoot = path.join(process.cwd(), 'spigot', 'versions');
 
-            let folders = [];
+            const groups = {
+              'fabric': [],
+              'neoforge': [],
+              'forge-legacy': [],
+              'forge-modern': [],
+              'spigot': []
+            };
 
             if (fs.existsSync(modloadersRoot)) {
-              const modloadersFolders = fs.readdirSync(modloadersRoot, { withFileTypes: true })
+              const dirs = fs.readdirSync(modloadersRoot, { withFileTypes: true })
                 .filter(d => d.isDirectory())
-                .map(d => `:modloaders:${d.name}`);
-              folders.push(...modloadersFolders);
+                .map(d => d.name);
+
+              for (const name of dirs) {
+                const proj = `:modloaders:${name}`;
+                if (name.endsWith('-fabric')) {
+                  groups['fabric'].push(proj);
+                } else if (name.endsWith('-neoforge')) {
+                  groups['neoforge'].push(proj);
+                } else if (name.endsWith('-forge')) {
+                  const mcVer = name.slice(0, -'-forge'.length);
+                  const parts = mcVer.split('.');
+                  const major = parseInt(parts[0], 10);
+                  const minor = parseInt(parts[1] || '0', 10);
+                  if (major === 1 && minor <= 15) {
+                    groups['forge-legacy'].push(proj);
+                  } else {
+                    groups['forge-modern'].push(proj);
+                  }
+                } else {
+                  groups['forge-modern'].push(proj);
+                }
+              }
             }
 
             if (fs.existsSync(spigotRoot)) {
-              const spigotFolders = fs.readdirSync(spigotRoot, { withFileTypes: true })
+              const dirs = fs.readdirSync(spigotRoot, { withFileTypes: true })
                 .filter(d => d.isDirectory())
                 .map(d => `:spigot:${d.name}`);
-              folders.push(...spigotFolders);
+              groups['spigot'].push(...dirs);
             }
 
-            console.log(folders)
-            core.setOutput('matrix', JSON.stringify({ version: folders }));
-            return JSON.stringify(folders);
-      - name: Output Matrix
-        id: output-matrix
-        run: echo "${{ steps.set-matrix.outputs.result }}"
+            const matrix = Object.entries(groups)
+              .filter(([, list]) => list.length > 0)
+              .map(([group, list]) => ({
+                group,
+                versions: list.join(';'),
+                build_tasks: list.map(p => `${p}:buildAndCollect`).join(' '),
+                publish_tasks: list.map(p => `${p}:publishMods`).join(' ')
+              }));
+
+            console.log(matrix);
+            return JSON.stringify(matrix);
+
   build:
-    name: Build Project
+    name: Build (${{ matrix.group }})
     needs: define-matrix
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        version: ${{ fromJSON(needs.define-matrix.outputs.matrix) }}
-    outputs:
-      artifact-name: ${{ steps.upload.outputs.artifact-name }}
+        include: ${{ fromJSON(needs.define-matrix.outputs.matrix) }}
 
     steps:
       - name: Checkout repository
@@ -79,31 +112,30 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: wrapper
-
-      - name: Cache Gradle packages
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ matrix.version }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-${{ matrix.version }}-
-            ${{ runner.os }}-gradle-
-
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+          cache-cleanup: always
 
       - name: Build with Gradle
-        run: ./gradlew ${{ matrix.version }}:buildAndCollect --no-daemon
+        run: ./gradlew ${{ matrix.build_tasks }} -Pci.versions="${{ matrix.versions }}" --parallel --no-daemon
 
-      - name: Prepare artifact name
-        id: prepare-artifact-name
-        run: echo "name=$(./scripts/normalize-artifact-name.sh '${{ matrix.version }}')" >> "$GITHUB_OUTPUT"
+      - name: Prune bulky Loom caches before cache save
+        if: always()
+        run: |
+          rm -rf ~/.gradle/caches/essential-loom \
+                 ~/.gradle/caches/fabric-loom \
+                 ~/.gradle/caches/minecraft-codev \
+                 ~/.gradle/caches/paperweight-userdev \
+                 ~/.gradle/caches/*/transforms \
+                 ~/.gradle/daemon \
+                 .gradle/loom-cache \
+                 .gradle/configuration-cache
 
-      - name: Upload artifacts
+      - name: Upload batch artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.prepare-artifact-name.outputs.name }}
+          name: build-artifacts-${{ matrix.group }}
           path: build/libs/
+          retention-days: 7
 
   collect:
     name: Collect All Artifacts
@@ -116,7 +148,7 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: build-*
+          pattern: build-artifacts-*
           path: collected/
           merge-multiple: true
 
@@ -126,4 +158,3 @@ jobs:
         with:
           name: build-artifacts
           path: collected/
-

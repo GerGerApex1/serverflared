@@ -30,6 +30,7 @@ platform {
 val mcVersionArray = prop("loader.minecraft").split(".")
 
 loom {
+	accessWidenerPath = rootProject.file("modloaders/src/main/resources/serverflared.accesswidener")
 }
 dependencies {
 	includeDep(libs.jackson.core)
@@ -44,6 +45,9 @@ dependencies {
 	neoForge("net.neoforged:neoforge:${prop("loader.neoforge")}")
 
 	//"modImplementation"(include("net.fabricmc.fabric-api:fabric-api:${prop("deps.fabric-api")}"))
+}
+tasks.processResources {
+	from(rootProject.file("modloaders/src/main/resources/neoforge"))
 }
 repositories {
 	maven {

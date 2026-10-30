@@ -12,13 +12,13 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.stream.Collectors;
-import me.gergerapex1.serverflared.Constants;
 import me.gergerapex1.serverflared.utils.config.annonations.Comment;
 
 public class YamlHandler {
@@ -52,9 +52,6 @@ public class YamlHandler {
         try (BufferedWriter writer = Files.newBufferedWriter(Paths.get(filePath), StandardCharsets.UTF_8,
             StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE)) {
 
-            Map<String, String> commentsByPath = new LinkedHashMap<>();
-            collectComments(object, "", commentsByPath);
-
             String yamlString = yamlMapper.writerWithDefaultPrettyPrinter().writeValueAsString(object);
 
             writer.write(yamlString);
@@ -63,6 +60,14 @@ public class YamlHandler {
     private static void collectComments(Object obj, String prefix, Map<String, String> out) {
         if (obj == null) return;
         Class<?> cls = obj.getClass();
+        if (isSimpleValue(cls)
+            || cls.isArray()
+            || Collection.class.isAssignableFrom(cls)
+            || Map.class.isAssignableFrom(cls)
+            || cls.getName().startsWith("java.")) {
+            return;
+        }
+
         Comment typeComment = cls.getAnnotation(Comment.class);
         if (typeComment != null) {
             String key = prefix.isEmpty() ? cls.getSimpleName().toLowerCase() : prefix;
@@ -70,6 +75,9 @@ public class YamlHandler {
         }
 
         for (Field f : cls.getDeclaredFields()) {
+            if (java.lang.reflect.Modifier.isStatic(f.getModifiers()) || f.isSynthetic()) {
+                continue;
+            }
             f.setAccessible(true);
             String name = f.getName();
             String path = prefix.isEmpty() ? name : prefix + "." + name;

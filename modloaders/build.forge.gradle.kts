@@ -26,13 +26,29 @@ platform {
 	}
 }
 val minorVersion = prop("loader.minecraft").split(".")[1].toInt()
+val forgeAccessTransformerResource = when {
+	minorVersion < 14 -> null
+	minorVersion < 17 -> rootProject.file("modloaders/src/main/resources/forge/legacy/META-INF/accesstransformer.cfg")
+	else -> rootProject.file("modloaders/src/main/resources/forge/modern/META-INF/accesstransformer.cfg")
+}
+val forgeDevelopmentAccessTransformer = if (minorVersion in 14..16) {
+	rootProject.file("modloaders/access-transformers/forge-legacy-development.cfg")
+} else {
+	forgeAccessTransformerResource
+}
 
 loom {
 	forge {
+		forgeDevelopmentAccessTransformer?.let { accessTransformer(it) }
 		if(minorVersion <= 12) {
 			pack200Provider.set(dev.architectury.pack200.java.Pack200Adapter())
 
 		}
+	}
+}
+forgeAccessTransformerResource?.let { transformer ->
+	tasks.processResources {
+		from(transformer.parentFile.parentFile)
 	}
 }
 dependencies {
