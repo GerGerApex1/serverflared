@@ -10,7 +10,13 @@ plugins {
 	alias(libs.plugins.architectury.loom).apply(false)
 }
 
-stonecutter active file(".sc_active_version")
+val activeFile = file(".sc_active_version")
+val activeName = if (activeFile.exists()) activeFile.readText().trim() else ""
+if (stonecutter.versions.any { it.project == activeName }) {
+	stonecutter active activeFile
+} else {
+	stonecutter active stonecutter.versions.first().project
+}
 
 for (version in stonecutter.versions.map { it.version }.distinct()) tasks.register("publish$version") {
 	group = "publishing"

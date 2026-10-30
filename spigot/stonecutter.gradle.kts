@@ -12,7 +12,8 @@ plugins {
 //Illegal string version part; expected [a-zA-Z0-9_]:
 //| spigot-modern
 // wtf?
-stonecutter active "1.16.1-spigot"
+val defaultActive = "1.16.1-spigot"
+stonecutter active (if (stonecutter.versions.any { it.project == defaultActive }) defaultActive else stonecutter.versions.first().project)
 
 for (version in stonecutter.versions.map { it.version }.distinct()) tasks.register("publish$version") {
 	group = "publishing"
