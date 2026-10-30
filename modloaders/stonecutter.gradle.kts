@@ -10,17 +10,11 @@ plugins {
 	alias(libs.plugins.architectury.loom).apply(false)
 }
 
-val activeFile = file(".sc_active_version")
-val activeName = if (activeFile.exists()) activeFile.readText().trim() else ""
-if (stonecutter.versions.any { it.project == activeName }) {
-	stonecutter active activeFile
-} else {
-	stonecutter active stonecutter.versions.first().project
-}
+stonecutter active file(".sc_active_version")
 
 for (version in stonecutter.versions.map { it.version }.distinct()) tasks.register("publish$version") {
 	group = "publishing"
-	dependsOn(stonecutter.tasks.named("publishMods") { metadata.version == version })
+	dependsOn(stonecutter.tasks.named("publishMods") { metadata.version == version && project.tasks.findByName("publishMods") != null })
 }
 
 stonecutter tasks {

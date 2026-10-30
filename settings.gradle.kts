@@ -90,15 +90,20 @@ stonecutter {
 	}
 
 	if (modloaderEntries.isNotEmpty()) {
+		val activeModloader = file("modloaders/.sc_active_version")
+			.takeIf { it.exists() }
+			?.readText()
+			?.trim()
+			?.takeIf { it.isNotEmpty() }
+			?: "1.21.1-fabric"
 		create("modloaders") {
 			for ((projectName, mcVersion, buildScript) in modloaderEntries) {
 				version(projectName, mcVersion).buildscript = buildScript
 			}
-			vcsVersion = if (modloaderEntries.any { it.first == "1.21.1-fabric" }) {
-				"1.21.1-fabric"
-			} else {
-				modloaderEntries.first().first
+			if (modloaderEntries.none { it.first == activeModloader }) {
+				version(activeModloader, activeModloader.substringBefore('-'))
 			}
+			vcsVersion = activeModloader
 		}
 	}
 
@@ -108,6 +113,10 @@ stonecutter {
 			for (projectName in spigotEntries) {
 				version(projectName).buildscript = "build.spigot.gradle.kts"
 			}
+			if ("1.16.1-spigot" !in spigotEntries) {
+				version("1.16.1-spigot")
+			}
+			vcsVersion = "1.16.1-spigot"
 		}
 	}
 }

@@ -12,12 +12,11 @@ plugins {
 //Illegal string version part; expected [a-zA-Z0-9_]:
 //| spigot-modern
 // wtf?
-val defaultActive = "1.16.1-spigot"
-stonecutter active (if (stonecutter.versions.any { it.project == defaultActive }) defaultActive else stonecutter.versions.first().project)
+stonecutter active "1.16.1-spigot"
 
 for (version in stonecutter.versions.map { it.version }.distinct()) tasks.register("publish$version") {
 	group = "publishing"
-	dependsOn(stonecutter.tasks.named("publishMods") { metadata.version == version })
+	dependsOn(stonecutter.tasks.named("publishMods") { metadata.version == version && project.tasks.findByName("publishMods") != null })
 }
 
 stonecutter tasks {
