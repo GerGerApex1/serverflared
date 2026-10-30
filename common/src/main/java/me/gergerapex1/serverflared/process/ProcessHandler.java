@@ -5,18 +5,31 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import me.gergerapex1.serverflared.Constants;
 
 public class ProcessHandler {
     private final String binaryPath;
-    private final List<Process> processes = new ArrayList<>();
-    private static final ExecutorService EXECUTOR_SERVICE = Executors.newCachedThreadPool();
+    private final List<Process> processes = new CopyOnWriteArrayList<>();
+    private static final AtomicInteger THREAD_COUNTER = new AtomicInteger(1);
+    private static final ExecutorService EXECUTOR_SERVICE = Executors.newCachedThreadPool(new ThreadFactory() {
+        @Override
+        public Thread newThread(Runnable r) {
+            Thread t = new Thread(r, "serverflared-process-io-" + THREAD_COUNTER.getAndIncrement());
+            t.setDaemon(true);
+            return t;
+        }
+    });
 
     public ProcessHandler(String binaryPath) {
         this.binaryPath = binaryPath;
@@ -29,8 +42,8 @@ public class ProcessHandler {
             EXECUTOR_SERVICE.submit(() -> captureProcessOutput(process.getInputStream(), stdout));
             EXECUTOR_SERVICE.submit(() -> captureProcessOutput(process.getErrorStream(), stderr));
 
-
             int exitCode = process.waitFor();
+            processes.remove(process);
             if (exitCode != 0) {
                 Constants.LOG.error("Command failed with exit code: {}", exitCode);
             }
@@ -40,27 +53,7 @@ public class ProcessHandler {
             return null;
         }
     }
-    /*
-    public <R> Optional<R> captureProcessOutput(Process process, Function<String, Optional<R>> onLine) throws IOException {
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                Optional<R> maybe = onLine.apply(line);
-                if(process.info().commandLine().isPresent()) {
-                    Constants.LOG.debug("({}) {}", process.info().commandLine().get(), line);
-                }
-                if (maybe != null && maybe.isPresent()) {
-                    process.destroy();
-                    process.waitFor();
-                    return maybe;
-                }
-            }
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-        return Optional.empty();
-    }
-     */
+
     public Process runAsync(SubCommand subCommand, Consumer<String> stdout, Consumer<String> stderr) throws IOException {
         Process process = createProcess(subCommand);
         EXECUTOR_SERVICE.submit(() -> captureProcessOutput(process.getInputStream(), stdout));
@@ -68,17 +61,21 @@ public class ProcessHandler {
         processes.add(process);
         return process;
     }
+
     private static void captureProcessOutput(InputStream inputStream, Consumer<String> cb) {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 Constants.LOG.debug(line);
-                cb.accept(line);
+                if (cb != null) {
+                    cb.accept(line);
+                }
             }
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            Constants.LOG.debug("Process stream closed: {}", e.getMessage());
         }
     }
+
     private Process createProcess(SubCommand subCommand) throws IOException {
         List<String> cmdList = new ArrayList<>(subCommand.getCommandList());
         // Prepend binary path in a Java 8-safe way
@@ -90,18 +87,61 @@ public class ProcessHandler {
         return processBuilder.start();
     }
 
-    public void terminate() {
+    public boolean hasRunningProcess() {
+        for (Process p : processes) {
+            if (p != null && p.isAlive()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public Process getActiveProcess() {
+        for (int i = processes.size() - 1; i >= 0; i--) {
+            Process p = processes.get(i);
+            if (p != null && p.isAlive()) {
+                return p;
+            }
+        }
+        return null;
+    }
+
+    public static long getProcessPid(Process process) {
+        if (process == null) {
+            return -1L;
+        }
+        try {
+            Method pidMethod = Process.class.getMethod("pid");
+            Object result = pidMethod.invoke(process);
+            if (result instanceof Number) {
+                return ((Number) result).longValue();
+            }
+        } catch (Throwable ignored) {
+            // Fallback for Java 8 UNIXProcess
+            try {
+                Field pidField = process.getClass().getDeclaredField("pid");
+                pidField.setAccessible(true);
+                return pidField.getLong(process);
+            } catch (Throwable ignored2) {
+            }
+        }
+        return -1L;
+    }
+
+    public synchronized void terminate() {
         for (Process p : processes) {
             try {
-                p.destroy();
-				boolean isExited = p.waitFor(3, TimeUnit.SECONDS);
-				if(!isExited) {
-					p.destroyForcibly();
-					p.waitFor(2, TimeUnit.SECONDS);
-				}
-                Constants.LOG.info("Terminated process: {}", p.exitValue());
+                if (p != null && p.isAlive()) {
+                    p.destroy();
+                    boolean isExited = p.waitFor(3, TimeUnit.SECONDS);
+                    if (!isExited) {
+                        p.destroyForcibly();
+                        p.waitFor(2, TimeUnit.SECONDS);
+                    }
+                    Constants.LOG.info("Terminated process: {}", p.exitValue());
+                }
             } catch (Exception e) {
-                Constants.LOG.warn("Failed to terminatProcesses process: {}", p);
+                Constants.LOG.warn("Failed to terminate process: {}", p);
             }
         }
         processes.clear();
