@@ -11,10 +11,23 @@ ServerFlared is a mod that automatically creates and manages a Cloudflare Tunnel
 
 ## Installation
 
-*   Install the mod into `mods` folder
+*   Install the mod into `mods` folder (or `plugins` for Spigot)
 *   Launch Minecraft server
-*   Configure `config.yml` and change `tunnelName` and `hostName`
-*   Relaunch server to update configuration
+*   Configure `config.yml` according to your preferred `tunnelMode` (see below)
+*   Relaunch server or run `/serverflared reload`
+
+## Tunnel Modes
+
+ServerFlared supports three tunnel modes via `tunnelMode` in `config.yml`:
+
+1. **`LOCAL` (Default)** – Locally-managed tunnel using `cloudflared tunnel login` (`cert.pem`). Set `tunnelName` and `hostName`.
+2. **`REMOTE_TOKEN`** – Remotely-managed tunnel using a token from the Cloudflare Zero Trust Dashboard (no `cloudflared tunnel login` or API token needed). Set `tunnelMode: "REMOTE_TOKEN"` and `remote.tunnelToken` (or set the `SERVERFLARED_TUNNEL_TOKEN` environment variable).
+3. **`REMOTE_API`** – Automatically creates and manages a remotely-managed tunnel, TCP ingress rules, and DNS CNAME record via the Cloudflare REST API v4. Set `tunnelMode: "REMOTE_API"`, `hostName`, and `remote.apiToken` (or set the `SERVERFLARED_API_TOKEN` environment variable).
+   * Required Cloudflare API Token permissions:
+     * **Account → Cloudflare Tunnel → Edit**
+     * **Zone → DNS → Edit**
+     * **Account → Account Settings → Read** (optional, only if `remote.accountId` is omitted)
+     * **Zone → Zone → Read** (optional, only if `remote.zoneId` is omitted)
 
 ## Features
 * Automatic Cloudflare Tunnel setup – Creates and manages a Cloudflare Tunnel with minimal configuration by authenticating your Cloudflare account.
