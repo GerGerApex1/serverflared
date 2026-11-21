@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.UUID;
+import java.util.regex.Pattern;
 
 /**
  * Parses and validates a Cloudflare Tunnel run token offline.
@@ -12,6 +14,9 @@ import java.util.Base64;
  */
 public final class RemoteTunnelToken {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final Pattern UUID_PATTERN = Pattern.compile(
+        "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    );
 
     private final String rawToken;
     private final String accountId;
@@ -61,7 +66,22 @@ public final class RemoteTunnelToken {
             );
         }
 
-        return new RemoteTunnelToken(trimmed, accountId, tunnelId);
+        validateTunnelUuid(tunnelId);
+
+        // Normalize to canonical padded standard Base64 so cloudflared always receives a valid token.
+        String canonicalToken = Base64.getEncoder().encodeToString(decodedBytes);
+        return new RemoteTunnelToken(canonicalToken, accountId, tunnelId);
+    }
+
+    private static void validateTunnelUuid(String tunnelId) {
+        if (!UUID_PATTERN.matcher(tunnelId).matches()) {
+            throw new IllegalArgumentException("Cloudflare tunnel token contains an invalid tunnel ID UUID.");
+        }
+        try {
+            UUID.fromString(tunnelId);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Cloudflare tunnel token contains an invalid tunnel ID UUID.", e);
+        }
     }
 
     private static String getNonEmptyText(JsonNode root, String field) {

@@ -1,11 +1,13 @@
 package me.gergerapex1.serverflared.cloudflared.handler;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Collections;
 import java.util.Map;
 import me.gergerapex1.serverflared.Constants;
 import me.gergerapex1.serverflared.cloudflared.remote.CloudflareApiClient;
 import me.gergerapex1.serverflared.cloudflared.remote.CloudflareApiException;
 import me.gergerapex1.serverflared.cloudflared.remote.RemoteTunnelToken;
+import me.gergerapex1.serverflared.process.ProcessHandler;
 import me.gergerapex1.serverflared.process.SubCommand;
 import me.gergerapex1.serverflared.utils.config.Config;
 import me.gergerapex1.serverflared.utils.config.RemoteConfig;
@@ -27,6 +29,18 @@ public class RemoteManagedTunnel extends AbstractManagedTunnel {
             throw new IllegalArgumentException("RemoteManagedTunnel requires REMOTE_TOKEN or REMOTE_API mode.");
         }
         this.mode = mode;
+    }
+
+    RemoteManagedTunnel(CloudFlaredHandler cloudflaredHandler, TunnelMode mode, ProcessHandler customExecutor) {
+        super(cloudflaredHandler, customExecutor);
+        if (mode == null || !mode.isRemote()) {
+            throw new IllegalArgumentException("RemoteManagedTunnel requires REMOTE_TOKEN or REMOTE_API mode.");
+        }
+        this.mode = mode;
+    }
+
+    protected CloudflareApiClient createApiClient(String apiToken) {
+        return new CloudflareApiClient(apiToken);
     }
 
     @Override
@@ -92,11 +106,23 @@ public class RemoteManagedTunnel extends AbstractManagedTunnel {
         }
 
         try {
-            CloudflareApiClient api = new CloudflareApiClient(apiToken);
+            CloudflareApiClient api = createApiClient(apiToken);
 
             String accountId = remote.getAccountId();
             if (accountId == null || accountId.trim().isEmpty()) {
                 accountId = api.resolveAccountId();
+            }
+
+            // Resolve and validate the DNS target zone BEFORE mutating live tunnel ingress.
+            String resolvedZoneId = null;
+            if (remote.isManageDns()) {
+                String configuredZoneId = remote.getZoneId();
+                if (configuredZoneId == null || configuredZoneId.trim().isEmpty()) {
+                    resolvedZoneId = api.resolveZoneId(accountId, config.getHostName());
+                } else {
+                    api.verifyZoneBelongsToAccount(configuredZoneId, accountId);
+                    resolvedZoneId = configuredZoneId.trim();
+                }
             }
 
             String tunnelName = config.getTunnelName();
@@ -133,18 +159,32 @@ public class RemoteManagedTunnel extends AbstractManagedTunnel {
                 Constants.LOG.info("Found existing remote tunnel '{}' with ID {}", resolvedName, tunnelId);
             }
 
-            String resolvedIp = resolveLocalIp(localIp);
-            int resolvedPort = resolveServerPort(serverPort);
-            String serviceUrl = "tcp://" + resolvedIp + ":" + resolvedPort;
-            api.updateTunnelIngress(accountId, tunnelId, config.getHostName(), serviceUrl);
+            // Snapshot existing ingress configuration before updating so we preserve unrelated routes
+            // and can safely roll back if DNS write fails after updating live ingress.
+            JsonNode previousConfig = (record != null) ? api.getTunnelConfiguration(accountId, tunnelId) : null;
+
+            String serviceUrl = formatTcpServiceUrl(localIp, serverPort);
+            api.updateTunnelIngress(accountId, tunnelId, config.getHostName(), serviceUrl, previousConfig);
             Constants.LOG.info("Synced remote tunnel ingress: {} -> {}", config.getHostName(), serviceUrl);
 
             if (remote.isManageDns()) {
-                String zoneId = remote.getZoneId();
-                if (zoneId == null || zoneId.trim().isEmpty()) {
-                    zoneId = api.resolveZoneId(config.getHostName());
+                try {
+                    api.syncDnsCname(resolvedZoneId, config.getHostName(), tunnelId);
+                } catch (CloudflareApiException | RuntimeException dnsError) {
+                    Constants.LOG.error(
+                        "DNS sync failed after ingress update for '{}'; restoring previous tunnel configuration.",
+                        config.getHostName()
+                    );
+                    try {
+                        api.restoreTunnelConfiguration(accountId, tunnelId, previousConfig);
+                    } catch (Exception rollbackError) {
+                        Constants.LOG.error(
+                            "Failed to restore previous tunnel configuration for tunnel {}: {}",
+                            tunnelId, rollbackError.getMessage()
+                        );
+                    }
+                    throw dnsError;
                 }
-                api.syncDnsCname(zoneId, config.getHostName(), tunnelId);
             }
 
             this.activeRunToken = runToken;

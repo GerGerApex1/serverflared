@@ -95,6 +95,10 @@ public class CloudflareApiClient {
     }
 
     public String resolveZoneId(String hostName) throws CloudflareApiException {
+        return resolveZoneId(null, hostName);
+    }
+
+    public String resolveZoneId(String accountId, String hostName) throws CloudflareApiException {
         if (hostName == null || hostName.trim().isEmpty()) {
             throw new CloudflareApiException("Cannot resolve Cloudflare Zone ID: hostName is empty.");
         }
@@ -107,6 +111,10 @@ public class CloudflareApiClient {
             throw new CloudflareApiException("Invalid hostName '" + hostName + "' for Cloudflare Zone lookup.");
         }
 
+        String accountFilter = (accountId != null && !accountId.trim().isEmpty())
+            ? "&account.id=" + urlEncode(accountId.trim())
+            : "";
+
         // Walk up domain labels: e.g. mc.play.example.com -> play.example.com -> example.com
         for (int i = 0; i <= labels.length - 2; i++) {
             StringBuilder candidate = new StringBuilder();
@@ -116,7 +124,7 @@ public class CloudflareApiClient {
                 }
                 candidate.append(labels[j]);
             }
-            JsonNode result = request("GET", "/zones?name=" + urlEncode(candidate.toString()), null);
+            JsonNode result = request("GET", "/zones?name=" + urlEncode(candidate.toString()) + accountFilter, null);
             if (result != null && result.isArray() && result.size() > 0) {
                 String zoneId = result.get(0).path("id").asText("").trim();
                 if (!zoneId.isEmpty()) {
@@ -127,9 +135,28 @@ public class CloudflareApiClient {
         }
 
         throw new CloudflareApiException(
-            "Could not find a Cloudflare Zone matching hostName '" + hostName + "'. "
-                + "Ensure Zone:Zone:Read is granted or set remote.zoneId in config.yml."
+            "Could not find a Cloudflare Zone matching hostName '" + hostName + "'"
+                + (accountId != null && !accountId.trim().isEmpty() ? " in account '" + accountId.trim() + "'" : "")
+                + ". Ensure Zone:Zone:Read is granted or set remote.zoneId in config.yml."
         );
+    }
+
+    public void verifyZoneBelongsToAccount(String zoneId, String expectedAccountId) throws CloudflareApiException {
+        if (zoneId == null || zoneId.trim().isEmpty()) {
+            throw new CloudflareApiException("Cloudflare Zone ID is empty.");
+        }
+        if (expectedAccountId == null || expectedAccountId.trim().isEmpty()) {
+            throw new CloudflareApiException("Cannot verify zone ownership: accountId is empty.");
+        }
+        JsonNode result = request("GET", "/zones/" + urlEncode(zoneId.trim()), null);
+        String zoneAccountId = (result != null) ? result.path("account").path("id").asText("").trim() : "";
+        if (zoneAccountId.isEmpty() || !expectedAccountId.trim().equals(zoneAccountId)) {
+            throw new CloudflareApiException(
+                "Configured Cloudflare zone '" + zoneId.trim() + "' belongs to account '"
+                    + (zoneAccountId.isEmpty() ? "unknown" : zoneAccountId)
+                    + "', not tunnel account '" + expectedAccountId.trim() + "'."
+            );
+        }
     }
 
     public RemoteTunnelRecord findTunnel(String accountId, String tunnelId, String tunnelName)
@@ -189,19 +216,114 @@ public class CloudflareApiClient {
         return result.asText().trim();
     }
 
+    public JsonNode getTunnelConfiguration(String accountId, String tunnelId) throws CloudflareApiException {
+        try {
+            JsonNode result = request(
+                "GET",
+                "/accounts/" + urlEncode(accountId) + "/cfd_tunnel/" + urlEncode(tunnelId) + "/configurations",
+                null
+            );
+            if (result != null && result.isObject()) {
+                JsonNode configNode = result.get("config");
+                if (configNode != null && configNode.isObject()) {
+                    return configNode.deepCopy();
+                }
+            }
+            return null;
+        } catch (CloudflareApiException e) {
+            if (e.getHttpStatus() == 404) {
+                return null;
+            }
+            throw e;
+        }
+    }
+
     public void updateTunnelIngress(String accountId, String tunnelId, String hostName, String serviceUrl)
         throws CloudflareApiException {
+        JsonNode existingConfig = getTunnelConfiguration(accountId, tunnelId);
+        updateTunnelIngress(accountId, tunnelId, hostName, serviceUrl, existingConfig);
+    }
+
+    public void updateTunnelIngress(
+        String accountId,
+        String tunnelId,
+        String hostName,
+        String serviceUrl,
+        JsonNode existingConfig
+    ) throws CloudflareApiException {
+        ObjectNode mergedConfig = (existingConfig != null && existingConfig.isObject())
+            ? ((ObjectNode) existingConfig.deepCopy())
+            : objectMapper.createObjectNode();
+
+        ArrayNode mergedIngress = objectMapper.createArrayNode();
+        JsonNode existingIngress = mergedConfig.get("ingress");
+
+        boolean updatedExistingRule = false;
+        ObjectNode existingCatchAll = null;
+
+        if (existingIngress != null && existingIngress.isArray()) {
+            int size = existingIngress.size();
+            for (int i = 0; i < size; i++) {
+                JsonNode ruleNode = existingIngress.get(i);
+                if (ruleNode == null || !ruleNode.isObject()) {
+                    continue;
+                }
+                ObjectNode ruleCopy = (ObjectNode) ruleNode.deepCopy();
+                String ruleHost = ruleCopy.path("hostname").asText("").trim();
+                String rulePath = ruleCopy.path("path").asText("").trim();
+                boolean isCatchAll = ruleHost.isEmpty() && rulePath.isEmpty() && i == size - 1;
+
+                if (isCatchAll) {
+                    existingCatchAll = ruleCopy;
+                } else if (!updatedExistingRule && rulePath.isEmpty() && ruleHost.equalsIgnoreCase(hostName.trim())) {
+                    ruleCopy.put("hostname", hostName.trim());
+                    ruleCopy.put("service", serviceUrl);
+                    mergedIngress.add(ruleCopy);
+                    updatedExistingRule = true;
+                } else {
+                    mergedIngress.add(ruleCopy);
+                }
+            }
+        }
+
+        if (!updatedExistingRule) {
+            ObjectNode mcRule = objectMapper.createObjectNode();
+            mcRule.put("hostname", hostName.trim());
+            mcRule.put("service", serviceUrl);
+            mergedIngress.add(mcRule);
+        }
+
+        if (existingCatchAll != null) {
+            mergedIngress.add(existingCatchAll);
+        } else {
+            ObjectNode catchAll = objectMapper.createObjectNode();
+            catchAll.put("service", "http_status:404");
+            mergedIngress.add(catchAll);
+        }
+
+        mergedConfig.set("ingress", mergedIngress);
+
         ObjectNode root = objectMapper.createObjectNode();
-        ObjectNode config = root.putObject("config");
-        ArrayNode ingress = config.putArray("ingress");
+        root.set("config", mergedConfig);
 
-        ObjectNode mcRule = ingress.addObject();
-        mcRule.put("hostname", hostName);
-        mcRule.put("service", serviceUrl);
+        request(
+            "PUT",
+            "/accounts/" + urlEncode(accountId) + "/cfd_tunnel/" + urlEncode(tunnelId) + "/configurations",
+            root
+        );
+    }
 
-        ObjectNode catchAll = ingress.addObject();
-        catchAll.put("service", "http_status:404");
-
+    public void restoreTunnelConfiguration(String accountId, String tunnelId, JsonNode previousConfig)
+        throws CloudflareApiException {
+        ObjectNode root = objectMapper.createObjectNode();
+        if (previousConfig != null && previousConfig.isObject()) {
+            root.set("config", previousConfig.deepCopy());
+        } else {
+            ObjectNode emptyConfig = root.putObject("config");
+            ArrayNode ingress = emptyConfig.putArray("ingress");
+            ObjectNode catchAll = ingress.addObject();
+            catchAll.put("service", "http_status:404");
+        }
         request(
             "PUT",
             "/accounts/" + urlEncode(accountId) + "/cfd_tunnel/" + urlEncode(tunnelId) + "/configurations",
@@ -277,13 +399,43 @@ public class CloudflareApiClient {
             }
 
             int status = conn.getResponseCode();
-            InputStream stream = (status >= 200 && status < 300) ? conn.getInputStream() : conn.getErrorStream();
-            String responseText = readAll(stream);
+            boolean is2xx = status >= 200 && status < 300;
+            String responseText;
+            try {
+                InputStream stream = is2xx ? conn.getInputStream() : conn.getErrorStream();
+                responseText = readAll(stream);
+            } catch (IOException readError) {
+                if (!is2xx) {
+                    throw new CloudflareApiException(
+                        status,
+                        "Cloudflare API " + method + " " + path + " failed (HTTP " + status + ") with unreadable response body",
+                        readError
+                    );
+                }
+                throw readError;
+            }
 
-            JsonNode root = responseText.isEmpty() ? null : objectMapper.readTree(responseText);
+            JsonNode root;
+            try {
+                root = responseText.isEmpty() ? null : objectMapper.readTree(responseText);
+            } catch (IOException parseError) {
+                if (!is2xx) {
+                    throw new CloudflareApiException(
+                        status,
+                        "Cloudflare API " + method + " " + path + " failed (HTTP " + status + ") with unreadable response body",
+                        parseError
+                    );
+                }
+                throw new CloudflareApiException(
+                    status,
+                    "Cloudflare API " + method + " " + path + " returned unreadable JSON (HTTP " + status + ")",
+                    parseError
+                );
+            }
+
             boolean success = root != null && root.path("success").asBoolean(false);
 
-            if (status < 200 || status >= 300 || !success) {
+            if (!is2xx || !success) {
                 String errorDetail = extractCloudflareErrors(root, responseText);
                 throw new CloudflareApiException(
                     status,
