@@ -179,9 +179,26 @@ public final class ServerFlaredCommand {
 
     private static void handleClientCmd(CommandSenderAdapter sender) {
         ConfigManager cfgManager = ServerFlared.getConfigManager();
-        String hostName = (cfgManager != null && cfgManager.CONFIG != null && cfgManager.CONFIG.getHostName() != null)
-            ? cfgManager.CONFIG.getHostName().trim()
-            : "minecraftsubdomain.yourdomain.net";
+        Config cfg = cfgManager != null ? cfgManager.CONFIG : null;
+        String hostName = (cfg != null && cfg.getHostName() != null)
+            ? cfg.getHostName().trim()
+            : "";
+
+        if (ConfigManager.isDefaultHostName(hostName)) {
+            TunnelMode mode = cfg != null ? cfg.getResolvedTunnelMode() : TunnelMode.LOCAL;
+            if (mode == TunnelMode.REMOTE_TOKEN) {
+                sender.sendMessage(
+                    "\u00A7c[ServerFlared] hostName is unset or still uses the placeholder. "
+                        + "Set 'hostName' in config.yml to your existing Cloudflare Dashboard route and run /serverflared reload before generating a client command."
+                );
+            } else {
+                sender.sendMessage(
+                    "\u00A7c[ServerFlared] hostName is unset or still uses the placeholder. "
+                        + "Set 'hostName' in config.yml and run /serverflared reload before generating a client command."
+                );
+            }
+            return;
+        }
 
         String command = buildClientCommand(hostName);
         if (sender.isConsole()) {

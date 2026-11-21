@@ -30,7 +30,14 @@ public class ServerFlared {
     private static final AtomicBoolean tunnelInitStarted = new AtomicBoolean(false);
     private static final AtomicBoolean loginInProgress = new AtomicBoolean(false);
     private static final Object LIFECYCLE_LOCK = new Object();
+    private static long lifecycleGeneration = 0L;
+    private static long preparedGeneration = -1L;
+    private static long launchedGeneration = -1L;
+    private static ManagedTunnel preparedTunnel;
+    private static Config preparedConfig;
+    private static volatile boolean serverStarted = false;
     private static volatile boolean pendingTunnelStart = false;
+    private static volatile boolean tunnelPrepared = false;
     private static volatile boolean firstTimeMode = false;
     private static volatile TunnelInfo info = new TunnelInfo();
     private static volatile Runnable commandTreeSyncCallback;
@@ -47,38 +54,70 @@ public class ServerFlared {
 
     public static void init() {
         Constants.LOG.info("Initializing {}", Constants.MOD_FRIENDLY_NAME);
-        configManager = new ConfigManager();
-        handler = CloudFlaredHandler.createInstance();
-        TunnelMode mode = getConfiguredMode();
-        if (handler != null) {
-            activeTunnel = createTunnelHandler(mode, handler);
-        }
+        synchronized (LIFECYCLE_LOCK) {
+            lifecycleGeneration++;
+            serverStarted = false;
+            pendingTunnelStart = false;
+            tunnelPrepared = false;
+            preparedGeneration = -1L;
+            launchedGeneration = -1L;
+            preparedTunnel = null;
+            preparedConfig = null;
+            tunnelInitStarted.set(false);
+            firstTimeMode = false;
+            modDisabled = false;
 
-        if (configManager.firstTime || ConfigManager.isPendingFirstTimeSetup(configManager.CONFIG)) {
-            firstTimeMode = true;
-            modDisabled = true;
-            logFirstTimeSetup(mode);
-            return;
-        }
-        if (handler == null || activeTunnel == null) {
-            Constants.LOG.error("Failed to create CloudFlaredHandler instance, mod disabled.");
-            modDisabled = true;
-            return;
-        }
-        if (activeTunnel.requiresCliAuth() && !handler.isAuthenticated()) {
-            modDisabled = true;
-            // Prevent mod from starting until authentication is done
-            handler.authenticate().thenAccept(v -> {
-                if (v) {
-                    modDisabled = false;
-                    Constants.LOG.info("Authentication completed, resuming mod operation.");
-                    if (pendingTunnelStart) {
-                        handleTunnel();
+            configManager = new ConfigManager();
+            handler = CloudFlaredHandler.createInstance();
+            TunnelMode mode = getConfiguredMode();
+            if (handler != null) {
+                activeTunnel = createTunnelHandler(mode, handler);
+            }
+
+            if (configManager.firstTime || ConfigManager.isPendingFirstTimeSetup(configManager.CONFIG)) {
+                firstTimeMode = true;
+                modDisabled = true;
+                logFirstTimeSetup(mode);
+                return;
+            }
+            if (handler == null || activeTunnel == null) {
+                Constants.LOG.error("Failed to create CloudFlaredHandler instance, mod disabled.");
+                modDisabled = true;
+                return;
+            }
+            if (activeTunnel.requiresCliAuth() && !handler.isAuthenticated()) {
+                modDisabled = true;
+                final long authGeneration = lifecycleGeneration;
+                // Prevent mod from starting until authentication is done
+                handler.authenticate().thenAccept(v -> {
+                    if (Boolean.TRUE.equals(v)) {
+                        synchronized (LIFECYCLE_LOCK) {
+                            if (lifecycleGeneration != authGeneration) {
+                                Constants.LOG.debug("Ignoring stale authentication completion for generation {}.", authGeneration);
+                                return;
+                            }
+                        }
+                        Constants.LOG.info("Authentication completed, resuming mod operation.");
+                        resumeAfterAuthentication();
+                    } else {
+                        Constants.LOG.info("Authentication process went wrong");
                     }
-                } else {
-                    Constants.LOG.info("Authentication process went wrong");
-                }
-            });
+                });
+            }
+        }
+    }
+
+    private static void resumeAfterAuthentication() {
+        boolean shouldPrepareAndLaunch;
+        synchronized (LIFECYCLE_LOCK) {
+            modDisabled = false;
+            shouldPrepareAndLaunch = !firstTimeMode && (pendingTunnelStart || serverStarted);
+        }
+        if (shouldPrepareAndLaunch) {
+            handleTunnel();
+            if (serverStarted) {
+                launchPreparedTunnelIfReady();
+            }
         }
     }
 
@@ -104,7 +143,8 @@ public class ServerFlared {
         Constants.LOG.info("First time setup detected. Please configure {}", configPath.toString());
         Constants.LOG.info("Supported tunnelMode options:");
         Constants.LOG.info("  - LOCAL (default): Set 'tunnelName' and 'hostName', then authenticate via cloudflared login.");
-        Constants.LOG.info("  - REMOTE_TOKEN: Set 'tunnelMode: REMOTE_TOKEN' and 'remote.tunnelToken' (or SERVERFLARED_TUNNEL_TOKEN env var).");
+        Constants.LOG.info("  - REMOTE_TOKEN: Set 'tunnelMode: REMOTE_TOKEN' and 'remote.tunnelToken' (or SERVERFLARED_TUNNEL_TOKEN env var). "
+            + "Also set 'hostName' to your existing Cloudflare Dashboard route before generating a player command with /serverflared clientcmd.");
         Constants.LOG.info("  - REMOTE_API: Set 'tunnelMode: REMOTE_API', 'hostName', and 'remote.apiToken' (or SERVERFLARED_API_TOKEN env var).");
         Constants.LOG.info("After configuring, please restart the server or run /serverflared reload.");
         if (mode == TunnelMode.LOCAL && handler != null && !handler.isAuthenticated()) {
@@ -131,77 +171,204 @@ public class ServerFlared {
         }
 
         Constants.LOG.debug("Handling tunnel now (mode={})...", getConfiguredMode());
-        initiateTunnel();
+        boolean prepared = initiateTunnel();
+        if (!prepared) {
+            tunnelInitStarted.set(false);
+            Constants.LOG.error("Tunnel preparation failed; tunnel will not start automatically. Check logs and run /serverflared reload or /serverflared start.");
+        }
     }
 
     public static void startedServer() {
-        if (modDisabled || activeTunnel == null) {
-            return;
+        synchronized (LIFECYCLE_LOCK) {
+            serverStarted = true;
+            if (firstTimeMode) {
+                return;
+            }
+            if (modDisabled) {
+                pendingTunnelStart = true;
+                Constants.LOG.debug("startedServer reached while authentication is pending; deferring tunnel launch.");
+                return;
+            }
         }
-        Constants.LOG.debug("Starting tunnel in background (mode={})...", activeTunnel.getMode());
-        CompletableFuture.runAsync(ServerFlared::runTunnelBackground, ASYNC_EXECUTOR);
-        String host = (configManager != null && configManager.CONFIG != null)
-            ? configManager.CONFIG.getHostName()
-            : "";
-        if (host != null && !host.isEmpty() && !ConfigManager.isDefaultHostName(host)) {
-            Constants.LOG.info("Tunnel started! You can join the server with " + host);
-        } else {
-            Constants.LOG.info("Tunnel started in {} mode!", activeTunnel.getMode());
+        launchPreparedTunnelIfReady();
+    }
+
+    private static void launchPreparedTunnelIfReady() {
+        final long expectedGeneration;
+        final ManagedTunnel targetTunnel;
+        final Config targetConfig;
+        final TunnelInfo targetInfo;
+
+        synchronized (LIFECYCLE_LOCK) {
+            if (modDisabled || activeTunnel == null || configManager == null || configManager.CONFIG == null) {
+                return;
+            }
+            if (!tunnelPrepared
+                || preparedGeneration != lifecycleGeneration
+                || preparedTunnel != activeTunnel
+                || preparedConfig != configManager.CONFIG) {
+                Constants.LOG.error("Skipping tunnel startup because tunnel preparation did not succeed for the current configuration.");
+                return;
+            }
+            if (launchedGeneration == lifecycleGeneration || activeTunnel.isTunnelRunning()) {
+                Constants.LOG.debug("Tunnel launch already queued or running for current lifecycle generation.");
+                return;
+            }
+            expectedGeneration = lifecycleGeneration;
+            launchedGeneration = expectedGeneration;
+            targetTunnel = activeTunnel;
+            targetConfig = configManager.CONFIG;
+            targetInfo = info;
+            pendingTunnelStart = false;
         }
+
+        Constants.LOG.debug("Starting tunnel in background (mode={})...", targetTunnel.getMode());
+        CompletableFuture.runAsync(() -> runTunnelBackground(expectedGeneration, targetTunnel, targetConfig, targetInfo), ASYNC_EXECUTOR);
     }
 
     public static void cleanup() {
         Constants.LOG.info("Stopping serverflared");
         Constants.LOG.info("Stopping all processes...");
-        if (handler != null) {
-            handler.terminateProcesses();
-        }
-        if (activeTunnel != null) {
-            activeTunnel.terminateProcesses();
+        synchronized (LIFECYCLE_LOCK) {
+            lifecycleGeneration++;
+            serverStarted = false;
+            pendingTunnelStart = false;
+            tunnelPrepared = false;
+            preparedGeneration = -1L;
+            launchedGeneration = -1L;
+            preparedTunnel = null;
+            preparedConfig = null;
+            tunnelInitStarted.set(false);
+            if (handler != null) {
+                handler.terminateProcesses();
+            }
+            if (activeTunnel != null) {
+                activeTunnel.terminateProcesses();
+            }
         }
         Constants.LOG.info("Successfully stopped serverflared. See you next time!");
     }
 
     public static void runTunnelBackground() {
-        if (activeTunnel == null || configManager == null || configManager.CONFIG == null) {
+        final long expectedGeneration;
+        final ManagedTunnel targetTunnel;
+        final Config targetConfig;
+        final TunnelInfo targetInfo;
+        synchronized (LIFECYCLE_LOCK) {
+            expectedGeneration = lifecycleGeneration;
+            targetTunnel = activeTunnel;
+            targetConfig = configManager != null ? configManager.CONFIG : null;
+            targetInfo = info;
+        }
+        runTunnelBackground(expectedGeneration, targetTunnel, targetConfig, targetInfo);
+    }
+
+    private static void runTunnelBackground(
+        long expectedGeneration,
+        ManagedTunnel targetTunnel,
+        Config targetConfig,
+        TunnelInfo targetInfo
+    ) {
+        if (targetTunnel == null || targetConfig == null) {
             return;
         }
-        activeTunnel.startTunnel(configManager.CONFIG, info);
+        boolean started;
+        synchronized (LIFECYCLE_LOCK) {
+            if (lifecycleGeneration != expectedGeneration
+                || modDisabled
+                || activeTunnel != targetTunnel
+                || configManager == null
+                || configManager.CONFIG != targetConfig
+                || !tunnelPrepared
+                || preparedGeneration != expectedGeneration) {
+                Constants.LOG.debug("Skipping stale tunnel launch for generation {}.", expectedGeneration);
+                return;
+            }
+            started = targetTunnel.startTunnel(targetConfig, targetInfo);
+            if (!started) {
+                launchedGeneration = -1L;
+            }
+        }
+        if (started) {
+            String host = targetConfig.getHostName();
+            if (host != null && !host.isEmpty() && !ConfigManager.isDefaultHostName(host)) {
+                Constants.LOG.info("Tunnel started! You can join the server with " + host);
+            } else {
+                Constants.LOG.info("Tunnel started in {} mode!", targetTunnel.getMode());
+            }
+        } else {
+            Constants.LOG.error("Failed to start cloudflared tunnel ({}). Check server logs for details.", targetTunnel.getMode());
+        }
     }
 
     private static boolean initiateTunnel() {
-        if (handler == null || activeTunnel == null || configManager == null || configManager.CONFIG == null) {
-            return false;
+        final long targetGeneration;
+        final CloudFlaredHandler targetHandler;
+        final ManagedTunnel targetTunnel;
+        final Config targetConfig;
+
+        synchronized (LIFECYCLE_LOCK) {
+            if (handler == null || activeTunnel == null || configManager == null || configManager.CONFIG == null) {
+                return false;
+            }
+            if (activeTunnel.requiresCliAuth() && !handler.isAuthenticated()) {
+                return false;
+            }
+            targetGeneration = lifecycleGeneration;
+            targetHandler = handler;
+            targetTunnel = activeTunnel;
+            targetConfig = configManager.CONFIG;
         }
-        if (activeTunnel.requiresCliAuth() && !handler.isAuthenticated()) {
-            return false;
-        }
-        TunnelInfo prepared = activeTunnel.prepareTunnel(
-            configManager.CONFIG,
+
+        TunnelInfo prepared = targetTunnel.prepareTunnel(
+            targetConfig,
             ModPlatformInstance.xplat().getLocalAddress(),
             ModPlatformInstance.xplat().getServerPort()
         );
         if (prepared == null) {
+            synchronized (LIFECYCLE_LOCK) {
+                if (lifecycleGeneration == targetGeneration && activeTunnel == targetTunnel) {
+                    tunnelPrepared = false;
+                    preparedGeneration = -1L;
+                    preparedTunnel = null;
+                    preparedConfig = null;
+                }
+            }
             return false;
         }
-        info = prepared;
-        updateConfigWithTunnelInfo(prepared);
-        return true;
+
+        synchronized (LIFECYCLE_LOCK) {
+            if (lifecycleGeneration != targetGeneration
+                || handler != targetHandler
+                || activeTunnel != targetTunnel
+                || configManager == null
+                || configManager.CONFIG != targetConfig) {
+                Constants.LOG.debug("Discarding stale tunnel preparation result for generation {}.", targetGeneration);
+                return false;
+            }
+            info = prepared;
+            tunnelPrepared = true;
+            preparedGeneration = targetGeneration;
+            preparedTunnel = targetTunnel;
+            preparedConfig = targetConfig;
+            updateConfigWithTunnelInfo(targetConfig, prepared);
+            return true;
+        }
     }
 
-    private static void updateConfigWithTunnelInfo(TunnelInfo tunnel) {
-        if (tunnel == null || configManager == null || configManager.CONFIG == null) {
+    private static void updateConfigWithTunnelInfo(Config targetConfig, TunnelInfo tunnel) {
+        if (tunnel == null || targetConfig == null || configManager == null || configManager.CONFIG != targetConfig) {
             return;
         }
         boolean changed = false;
         if (tunnel.getId() != null && !tunnel.getId().isEmpty()
-            && !tunnel.getId().equals(configManager.CONFIG.getTunnelId())) {
-            configManager.CONFIG.setTunnelId(tunnel.getId());
+            && !tunnel.getId().equals(targetConfig.getTunnelId())) {
+            targetConfig.setTunnelId(tunnel.getId());
             changed = true;
         }
         if (tunnel.getName() != null && !tunnel.getName().isEmpty()
-            && !tunnel.getName().equals(configManager.CONFIG.getTunnelName())) {
-            configManager.CONFIG.setTunnelName(tunnel.getName());
+            && !tunnel.getName().equals(targetConfig.getTunnelName())) {
+            targetConfig.setTunnelName(tunnel.getName());
             changed = true;
         }
         if (changed) {
@@ -284,6 +451,7 @@ public class ServerFlared {
                 }
                 boolean started = activeTunnel.startTunnel(configManager.CONFIG, info);
                 if (started) {
+                    launchedGeneration = lifecycleGeneration;
                     modDisabled = false;
                     firstTimeMode = false;
                     sender.sendMessage("\u00A7a[ServerFlared] Tunnel started successfully (" + mode.name() + ") for \u00A7f"
@@ -306,6 +474,8 @@ public class ServerFlared {
                     return;
                 }
                 sender.sendMessage("\u00A7e[ServerFlared] Stopping cloudflared tunnel...");
+                lifecycleGeneration++;
+                launchedGeneration = -1L;
                 activeTunnel.terminateProcesses();
                 sender.sendMessage("\u00A7a[ServerFlared] Cloudflared tunnel stopped.");
             }
@@ -315,58 +485,85 @@ public class ServerFlared {
     public static CompletableFuture<Void> reloadAsync(final CommandSenderAdapter sender) {
         return CompletableFuture.runAsync(() -> {
             synchronized (LIFECYCLE_LOCK) {
-                sender.sendMessage("\u00A7e[ServerFlared] Reloading config.yml and restarting tunnel...");
+                sender.sendMessage("\u00A7e[ServerFlared] Reloading config.yml and validating tunnel configuration...");
                 if (configManager == null) {
                     configManager = new ConfigManager();
                 }
-                boolean reloaded = configManager.reload();
-                if (!reloaded) {
-                    sender.sendMessage("\u00A7c[ServerFlared] Failed to reload config.yml. Please check the file syntax.");
+
+                // Validate candidate configuration and all prerequisites BEFORE stopping the active tunnel.
+                Config candidateConfig = configManager.loadCandidateConfig();
+                if (candidateConfig == null) {
+                    sender.sendMessage("\u00A7c[ServerFlared] Failed to reload config.yml. Active tunnel left unchanged.");
                     return;
                 }
-                notifyCommandTreeSync();
-                TunnelMode mode = getConfiguredMode();
-                sender.sendMessage("\u00A77[ServerFlared] Config reloaded (tunnelMode=" + mode.name()
-                    + ", commandPermissionMode=" + configManager.CONFIG.getCommandPermissionMode()
-                    + "). Stopping active tunnel...");
 
+                TunnelMode candidateMode = candidateConfig.getResolvedTunnelMode();
+                CloudFlaredHandler candidateHandler = (handler != null) ? handler : CloudFlaredHandler.createInstance();
+                if (candidateHandler == null) {
+                    sender.sendMessage("\u00A7c[ServerFlared] Failed to initialize cloudflared binary handler. Active tunnel left unchanged.");
+                    return;
+                }
+
+                ManagedTunnel candidateTunnel = createTunnelHandler(candidateMode, candidateHandler);
+                if (candidateTunnel.requiresCliAuth() && !candidateHandler.isAuthenticated()) {
+                    sender.sendMessage(
+                        "\u00A7e[ServerFlared] Reload aborted: cloudflared is not authenticated for LOCAL mode. "
+                            + "Run /serverflared login first. Active tunnel left unchanged."
+                    );
+                    return;
+                }
+                if (ConfigManager.isPendingFirstTimeSetup(candidateConfig)) {
+                    sender.sendMessage(
+                        "\u00A7e[ServerFlared] Reload aborted: required settings are incomplete for "
+                            + candidateMode.name() + " mode. Update config.yml, then run /serverflared reload. Active tunnel left unchanged."
+                    );
+                    return;
+                }
+
+                candidateTunnel.setState(TunnelState.STARTING);
+                candidateTunnel.setLastConnectionDetail("Preparing reloaded tunnel configuration...");
+                TunnelInfo candidateInfo = candidateTunnel.prepareTunnel(
+                    candidateConfig,
+                    ModPlatformInstance.xplat().getLocalAddress(),
+                    ModPlatformInstance.xplat().getServerPort()
+                );
+                if (candidateInfo == null) {
+                    sender.sendMessage(
+                        "\u00A7c[ServerFlared] Reload aborted: failed to prepare tunnel ("
+                            + candidateTunnel.getLastConnectionDetail() + "). Active tunnel left unchanged."
+                    );
+                    return;
+                }
+
+                // Candidate is validated and prepared; now swap out the active tunnel safely.
+                sender.sendMessage("\u00A77[ServerFlared] Config validated (tunnelMode=" + candidateMode.name()
+                    + ", commandPermissionMode=" + candidateConfig.getCommandPermissionMode()
+                    + "). Switching tunnel...");
+
+                lifecycleGeneration++;
                 if (activeTunnel != null) {
                     activeTunnel.terminateProcesses();
                 }
-                if (handler == null) {
-                    handler = CloudFlaredHandler.createInstance();
-                }
-                if (handler == null) {
-                    sender.sendMessage("\u00A7c[ServerFlared] Failed to initialize cloudflared binary handler.");
-                    return;
-                }
-                activeTunnel = createTunnelHandler(mode, handler);
-                info = new TunnelInfo();
 
-                if (activeTunnel.requiresCliAuth() && !handler.isAuthenticated()) {
-                    sender.sendMessage("\u00A7e[ServerFlared] Config reloaded, but cloudflared is not authenticated. Run /serverflared login to authenticate.");
-                    return;
-                }
-                if (configManager.firstTime) {
-                    sender.sendMessage("\u00A7e[ServerFlared] Config reloaded, but required settings are still incomplete for "
-                        + mode.name() + " mode. Update config.yml, then run /serverflared reload.");
-                    return;
-                }
+                handler = candidateHandler;
+                configManager.applyConfig(candidateConfig);
+                activeTunnel = candidateTunnel;
+                info = candidateInfo;
+                tunnelPrepared = true;
+                preparedGeneration = lifecycleGeneration;
+                preparedTunnel = candidateTunnel;
+                preparedConfig = candidateConfig;
+                launchedGeneration = -1L;
+                updateConfigWithTunnelInfo(candidateConfig, candidateInfo);
+                notifyCommandTreeSync();
 
-                activeTunnel.setState(TunnelState.STARTING);
-                activeTunnel.setLastConnectionDetail("Re-initializing tunnel after reload...");
-                boolean prepared = initiateTunnel();
-                if (!prepared) {
-                    sender.sendMessage("\u00A7c[ServerFlared] Config reloaded, but failed to prepare tunnel: "
-                        + activeTunnel.getLastConnectionDetail());
-                    return;
-                }
-                boolean started = activeTunnel.startTunnel(configManager.CONFIG, info);
+                boolean started = candidateTunnel.startTunnel(candidateConfig, candidateInfo);
                 if (started) {
+                    launchedGeneration = lifecycleGeneration;
                     modDisabled = false;
                     firstTimeMode = false;
-                    sender.sendMessage("\u00A7a[ServerFlared] Reload complete! Tunnel running (" + mode.name()
-                        + ") for \u00A7f" + configManager.CONFIG.getHostName());
+                    sender.sendMessage("\u00A7a[ServerFlared] Reload complete! Tunnel running (" + candidateMode.name()
+                        + ") for \u00A7f" + candidateConfig.getHostName());
                 } else {
                     sender.sendMessage("\u00A7c[ServerFlared] Config reloaded, but failed to start cloudflared tunnel.");
                 }
@@ -412,8 +609,8 @@ public class ServerFlared {
                 if (throwable != null || !Boolean.TRUE.equals(authenticated)) {
                     sender.sendMessage("\u00A7c[ServerFlared] Cloudflared authentication failed or timed out.");
                 } else {
-                    modDisabled = false;
                     sender.sendMessage("\u00A7a[ServerFlared] Cloudflared authentication completed successfully!");
+                    resumeAfterAuthentication();
                 }
             });
         }, ASYNC_EXECUTOR);
