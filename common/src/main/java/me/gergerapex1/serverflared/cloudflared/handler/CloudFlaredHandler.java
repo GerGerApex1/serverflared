@@ -285,22 +285,20 @@ public class CloudFlaredHandler {
         return exists;
     }
     public boolean validateTunnelExist(String tunnelIdOrName) {
+        if (tunnelIdOrName == null || tunnelIdOrName.trim().isEmpty()) {
+            return false;
+        }
         AtomicBoolean doesExist = new AtomicBoolean(false);
         Constants.LOG.info(tunnelIdOrName);
-        try {
-            Process process = processHandler.runAsync(new SubCommand(Constants.CMD_TUNNEL, Constants.CMD_INFO, tunnelIdOrName), output -> {
-                if (isTunnelNotFound(output)) {
-                    tunnelNotFound(tunnelIdOrName);
-                    doesExist.set(false);
-                } else {
-                    doesExist.set(true);
-                }
-            }, Constants.LOG::error);
-            process.waitFor();
-        } catch (IOException | InterruptedException e) {
-            Constants.LOG.error("error", e);
-        }
-        return doesExist.get();
+        Process process = processHandler.run(new SubCommand(Constants.CMD_TUNNEL, Constants.CMD_INFO, tunnelIdOrName), output -> {
+            if (isTunnelNotFound(output)) {
+                tunnelNotFound(tunnelIdOrName);
+                doesExist.set(false);
+            } else {
+                doesExist.set(true);
+            }
+        }, Constants.LOG::error);
+        return process != null && process.exitValue() == 0 && doesExist.get();
     }
     /*
     public DetailedTunnelInfo getDetailedTunnelInfo(TunnelInfo tunnel) {
@@ -381,29 +379,31 @@ public class CloudFlaredHandler {
         return info;
     }
     public TunnelInfo getTunnelInfo(String tunnelIdOrName) {
+        if (tunnelIdOrName == null || tunnelIdOrName.trim().isEmpty()) {
+            return null;
+        }
         AtomicReference<TunnelInfo> info = new AtomicReference<>(null);
-        try {
-            Process process = processHandler.runAsync(
-                new SubCommand(Constants.CMD_TUNNEL, Constants.CMD_LIST),
-                line -> {
-                    Matcher matcher = TUNNEL_INFO_REGEX.matcher(line.trim());
-                    if (isTunnelNotFound(line)) {
-                        tunnelNotFound(tunnelIdOrName);
-                        info.set(null);
+        Process process = processHandler.run(
+            new SubCommand(Constants.CMD_TUNNEL, Constants.CMD_LIST),
+            line -> {
+                Matcher matcher = TUNNEL_INFO_REGEX.matcher(line.trim());
+                if (isTunnelNotFound(line)) {
+                    tunnelNotFound(tunnelIdOrName);
+                    info.set(null);
+                }
+                if (matcher.find()) {
+                    if (matcher.group(1).equals(tunnelIdOrName) || matcher.group(2).equals(tunnelIdOrName)) {
+                        TunnelInfo tunnelInfo = new TunnelInfo();
+                        tunnelInfo.setId(matcher.group(1));
+                        tunnelInfo.setName(matcher.group(2));
+                        info.set(tunnelInfo);
                     }
-                    if (matcher.find()) {
-                        if (matcher.group(1).equals(tunnelIdOrName) || matcher.group(2).equals(tunnelIdOrName)) {
-                            TunnelInfo tunnelInfo = new TunnelInfo();
-                            tunnelInfo.setId(matcher.group(1));
-                            tunnelInfo.setName(matcher.group(2));
-                            info.set(tunnelInfo);
-                        }
-                    }
-                },
-                Constants.LOG::error);
-                process.waitFor();
-        } catch (IOException | InterruptedException e) {
-            Constants.LOG.error("error", e);
+                }
+            },
+            Constants.LOG::error
+        );
+        if (process == null || process.exitValue() != 0) {
+            return null;
         }
         return info.get();
     }
