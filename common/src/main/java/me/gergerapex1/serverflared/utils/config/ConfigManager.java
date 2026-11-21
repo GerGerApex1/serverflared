@@ -25,7 +25,11 @@ public class ConfigManager {
         this.customConfigPath = customConfigPath;
         Path configFilePath = getConfigFilePath();
         try {
-            createConfigFileIfNotExist(configFilePath);
+            if (ensureConfigFileExists(configFilePath)) {
+                firstTime = true;
+                CONFIG = new Config();
+                return;
+            }
             migrateConfigFile(configFilePath);
 
             try {
@@ -104,7 +108,7 @@ public class ConfigManager {
     public synchronized Config loadCandidateConfig() {
         Path configFilePath = getConfigFilePath();
         try {
-            createConfigFileIfNotExist(configFilePath);
+            ensureConfigFileExists(configFilePath);
             migrateConfigFile(configFilePath);
             Config reloaded = handler.readFromYaml(configFilePath.toString(), Config.class);
             if (!isConfigValid(reloaded) || isFileEmpty(configFilePath)) {
@@ -170,18 +174,18 @@ public class ConfigManager {
             Constants.CONFIG_DIR, "config.yml");
     }
 
-    private void createConfigFileIfNotExist(Path configFilePath) throws IOException {
+    private boolean ensureConfigFileExists(Path configFilePath) throws IOException {
         Path parent = configFilePath.getParent();
         if (parent != null) {
             Files.createDirectories(parent);
         }
         if (Files.notExists(configFilePath)) {
             Files.createFile(configFilePath);
-            firstTime = true;
             Config defaultConfig = new Config();
             handler.writeToYaml(configFilePath.toString(), defaultConfig);
-            CONFIG = defaultConfig;
+            return true;
         }
+        return false;
     }
 
     private boolean isFileEmpty(Path path) {
