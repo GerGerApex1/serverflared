@@ -1,6 +1,7 @@
 package me.gergerapex1.serverflared.cloudflared.handler;
 
 import java.io.IOException;
+import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
@@ -24,13 +25,25 @@ public abstract class AbstractManagedTunnel implements ManagedTunnel {
     protected volatile boolean stoppingIntentionally = false;
 
     protected AbstractManagedTunnel(CloudFlaredHandler cloudflaredHandler) {
-        this.cfHandler = cloudflaredHandler;
-        this.executor = new ProcessHandler(
+        this(cloudflaredHandler, new ProcessHandler(
             cloudflaredHandler != null ? cloudflaredHandler.getBinaryPath() : Constants.CLOUDFLARED_BINARY_NAME
-        );
+        ));
+    }
+
+    protected AbstractManagedTunnel(CloudFlaredHandler cloudflaredHandler, ProcessHandler executor) {
+        this.cfHandler = cloudflaredHandler;
+        this.executor = executor;
     }
 
     protected synchronized boolean launchTunnelProcess(SubCommand command, Map<String, String> env) {
+        return launchTunnelProcess(command, env, null);
+    }
+
+    protected synchronized boolean launchTunnelProcess(
+        SubCommand command,
+        Map<String, String> env,
+        Collection<String> unsetEnvKeys
+    ) {
         if (isTunnelRunning()) {
             Constants.LOG.debug("Tunnel process is already running.");
             return false;
@@ -40,9 +53,7 @@ public abstract class AbstractManagedTunnel implements ManagedTunnel {
         startedAtMillis = System.currentTimeMillis();
         lastConnectionDetail = "Starting cloudflared tunnel process...";
         try {
-            Process process = (env == null || env.isEmpty())
-                ? executor.runAsync(command, this::handleTunnelLogLine, this::handleTunnelLogLine)
-                : executor.runAsync(command, env, this::handleTunnelLogLine, this::handleTunnelLogLine);
+            Process process = executor.runAsync(command, env, unsetEnvKeys, this::handleTunnelLogLine, this::handleTunnelLogLine);
             this.activeTunnelProcess = process;
             if (process != null && process.isAlive()) {
                 if (state == TunnelState.STARTING) {
@@ -111,13 +122,34 @@ public abstract class AbstractManagedTunnel implements ManagedTunnel {
     }
 
     protected static String resolveLocalIp(String localIp) {
-        return (localIp == null || localIp.trim().isEmpty() || "0.0.0.0".equals(localIp.trim()))
-            ? "localhost"
-            : localIp.trim();
+        if (localIp == null) {
+            return "localhost";
+        }
+        String trimmed = localIp.trim();
+        if (trimmed.isEmpty() || "0.0.0.0".equals(trimmed) || "::".equals(trimmed) || "[::]".equals(trimmed)) {
+            return "localhost";
+        }
+        return trimmed;
     }
 
     protected static int resolveServerPort(int serverPort) {
         return serverPort > 0 ? serverPort : 25565;
+    }
+
+    public static String formatHostPort(String localIp, int serverPort) {
+        String host = resolveLocalIp(localIp);
+        int port = resolveServerPort(serverPort);
+        if (host.startsWith("[") && host.endsWith("]") && host.length() > 2) {
+            return host + ":" + port;
+        }
+        if (host.indexOf(':') >= 0) {
+            return "[" + host + "]:" + port;
+        }
+        return host + ":" + port;
+    }
+
+    public static String formatTcpServiceUrl(String localIp, int serverPort) {
+        return "tcp://" + formatHostPort(localIp, serverPort);
     }
 
     @Override

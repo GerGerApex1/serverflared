@@ -8,11 +8,14 @@ import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -37,30 +40,72 @@ public class ProcessHandler {
     }
 
     public Process run(SubCommand subCommand, Consumer<String> stdout, Consumer<String> stderr) {
+        Process process = null;
+        Future<?> stdoutFuture = null;
+        Future<?> stderrFuture = null;
         try {
-            Process process = createProcess(subCommand);
+            process = createProcess(subCommand);
             processes.add(process);
-            EXECUTOR_SERVICE.submit(() -> captureProcessOutput(process.getInputStream(), stdout));
-            EXECUTOR_SERVICE.submit(() -> captureProcessOutput(process.getErrorStream(), stderr));
+            final InputStream stdoutStream = process.getInputStream();
+            final InputStream stderrStream = process.getErrorStream();
+            stdoutFuture = EXECUTOR_SERVICE.submit(() -> captureProcessOutput(stdoutStream, stdout));
+            stderrFuture = EXECUTOR_SERVICE.submit(() -> captureProcessOutput(stderrStream, stderr));
 
             int exitCode = process.waitFor();
+            awaitCapture(stdoutFuture);
+            awaitCapture(stderrFuture);
             processes.remove(process);
             if (exitCode != 0) {
                 Constants.LOG.error("Command failed with exit code: {}", exitCode);
             }
             return process;
-        } catch (IOException | InterruptedException e) {
+        } catch (IOException e) {
             Constants.LOG.error("Failed to execute command", e);
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            if (process != null) {
+                process.destroyForcibly();
+                processes.remove(process);
+            }
+            if (stdoutFuture != null) {
+                stdoutFuture.cancel(true);
+            }
+            if (stderrFuture != null) {
+                stderrFuture.cancel(true);
+            }
+            Constants.LOG.error("Command execution interrupted", e);
             return null;
         }
     }
 
+    private static void awaitCapture(Future<?> future) throws InterruptedException {
+        if (future == null) {
+            return;
+        }
+        try {
+            future.get();
+        } catch (ExecutionException e) {
+            Constants.LOG.debug("Process output capture failed: {}", e.getMessage());
+        }
+    }
+
     public Process runAsync(SubCommand subCommand, Consumer<String> stdout, Consumer<String> stderr) throws IOException {
-        return runAsync(subCommand, null, stdout, stderr);
+        return runAsync(subCommand, null, null, stdout, stderr);
     }
 
     public Process runAsync(SubCommand subCommand, Map<String, String> env, Consumer<String> stdout, Consumer<String> stderr) throws IOException {
-        Process process = createProcess(subCommand, env);
+        return runAsync(subCommand, env, null, stdout, stderr);
+    }
+
+    public Process runAsync(
+        SubCommand subCommand,
+        Map<String, String> env,
+        Collection<String> unsetEnvKeys,
+        Consumer<String> stdout,
+        Consumer<String> stderr
+    ) throws IOException {
+        Process process = createProcess(subCommand, env, unsetEnvKeys);
         EXECUTOR_SERVICE.submit(() -> captureProcessOutput(process.getInputStream(), stdout));
         EXECUTOR_SERVICE.submit(() -> captureProcessOutput(process.getErrorStream(), stderr));
         processes.add(process);
@@ -82,18 +127,26 @@ public class ProcessHandler {
     }
 
     private Process createProcess(SubCommand subCommand) throws IOException {
-        return createProcess(subCommand, null);
+        return createProcess(subCommand, null, null);
     }
 
-    private Process createProcess(SubCommand subCommand, Map<String, String> env) throws IOException {
+    private Process createProcess(SubCommand subCommand, Map<String, String> env, Collection<String> unsetEnvKeys) throws IOException {
         List<String> cmdList = new ArrayList<>(subCommand.getCommandList());
         // Prepend binary path in a Java 8-safe way
         cmdList.add(0, binaryPath);
         Constants.LOG.debug("Executing: {}", formatCommandForLog(cmdList));
 
         ProcessBuilder processBuilder = new ProcessBuilder(cmdList);
+        Map<String, String> processEnv = processBuilder.environment();
+        if (unsetEnvKeys != null) {
+            for (String key : unsetEnvKeys) {
+                if (key != null && !key.isEmpty()) {
+                    processEnv.remove(key);
+                }
+            }
+        }
         if (env != null && !env.isEmpty()) {
-            processBuilder.environment().putAll(env);
+            processEnv.putAll(env);
         }
         processBuilder.redirectErrorStream(true);
         return processBuilder.start();
