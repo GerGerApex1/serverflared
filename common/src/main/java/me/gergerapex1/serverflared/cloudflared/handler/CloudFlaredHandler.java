@@ -407,16 +407,6 @@ public class CloudFlaredHandler {
         }
         return info.get();
     }
-    public void runTunnelUsingTokenBackground(String token) {
-        try {
-            processHandler.runAsync(
-                new SubCommand(Constants.CMD_TUNNEL, Constants.CMD_RUN, "--token", token),
-                null,
-                error -> Constants.LOG.error("Error running tunnel with token: {}", error));
-        } catch (IOException e) {
-            Constants.LOG.error("Failed to run tunnel in background", e);
-        }
-    }
     private static boolean isTunnelNotFound(String line) {
         String lowerLine = line.toLowerCase();
         return lowerLine.contains("is neither the id nor the name of any of your tunnels") ||
@@ -426,7 +416,7 @@ public class CloudFlaredHandler {
         return binaryPath;
     }
     public boolean isDefaultTunnelUUID(String tunnelUUID) {
-        return tunnelUUID.equals(new UUID(0,0).toString());
+        return tunnelUUID == null || tunnelUUID.trim().isEmpty() || tunnelUUID.equals(new UUID(0, 0).toString());
     }
     public void tunnelNotFound(String tunnelIdOrName) {
         Constants.LOG.debug("Tunnel with ID or Name '{}' not found", tunnelIdOrName);
