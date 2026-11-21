@@ -9,6 +9,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -55,7 +56,11 @@ public class ProcessHandler {
     }
 
     public Process runAsync(SubCommand subCommand, Consumer<String> stdout, Consumer<String> stderr) throws IOException {
-        Process process = createProcess(subCommand);
+        return runAsync(subCommand, null, stdout, stderr);
+    }
+
+    public Process runAsync(SubCommand subCommand, Map<String, String> env, Consumer<String> stdout, Consumer<String> stderr) throws IOException {
+        Process process = createProcess(subCommand, env);
         EXECUTOR_SERVICE.submit(() -> captureProcessOutput(process.getInputStream(), stdout));
         EXECUTOR_SERVICE.submit(() -> captureProcessOutput(process.getErrorStream(), stderr));
         processes.add(process);
@@ -77,14 +82,43 @@ public class ProcessHandler {
     }
 
     private Process createProcess(SubCommand subCommand) throws IOException {
+        return createProcess(subCommand, null);
+    }
+
+    private Process createProcess(SubCommand subCommand, Map<String, String> env) throws IOException {
         List<String> cmdList = new ArrayList<>(subCommand.getCommandList());
         // Prepend binary path in a Java 8-safe way
         cmdList.add(0, binaryPath);
-        Constants.LOG.debug("Executing: {}", String.join(" ", cmdList));
+        Constants.LOG.debug("Executing: {}", formatCommandForLog(cmdList));
 
         ProcessBuilder processBuilder = new ProcessBuilder(cmdList);
+        if (env != null && !env.isEmpty()) {
+            processBuilder.environment().putAll(env);
+        }
         processBuilder.redirectErrorStream(true);
         return processBuilder.start();
+    }
+
+    public static String formatCommandForLog(List<String> cmdList) {
+        if (cmdList == null || cmdList.isEmpty()) {
+            return "";
+        }
+        List<String> sanitized = new ArrayList<>(cmdList.size());
+        boolean maskNext = false;
+        for (String arg : cmdList) {
+            if (maskNext) {
+                sanitized.add("***REDACTED***");
+                maskNext = false;
+            } else if ("--token".equals(arg) || "-t".equals(arg)) {
+                sanitized.add(arg);
+                maskNext = true;
+            } else if (arg != null && arg.startsWith("--token=")) {
+                sanitized.add("--token=***REDACTED***");
+            } else {
+                sanitized.add(arg);
+            }
+        }
+        return String.join(" ", sanitized);
     }
 
     public boolean hasRunningProcess() {
