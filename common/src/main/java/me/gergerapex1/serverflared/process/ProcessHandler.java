@@ -18,11 +18,16 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import me.gergerapex1.serverflared.Constants;
 
 public class ProcessHandler {
+    public static final long DEFAULT_COMMAND_TIMEOUT_SECONDS = 30L;
+    public static final int DEFAULT_MAX_CAPTURE_LINES = 4096;
+    public static final int DEFAULT_MAX_CAPTURE_BYTES = 1024 * 1024;
+
     private final String binaryPath;
     private final List<Process> processes = new CopyOnWriteArrayList<>();
     private static final AtomicInteger THREAD_COUNTER = new AtomicInteger(1);
@@ -40,6 +45,10 @@ public class ProcessHandler {
     }
 
     public Process run(SubCommand subCommand, Consumer<String> stdout, Consumer<String> stderr) {
+        return run(subCommand, stdout, stderr, DEFAULT_COMMAND_TIMEOUT_SECONDS);
+    }
+
+    public Process run(SubCommand subCommand, Consumer<String> stdout, Consumer<String> stderr, long timeoutSeconds) {
         Process process = null;
         Future<?> stdoutFuture = null;
         Future<?> stderrFuture = null;
@@ -48,13 +57,32 @@ public class ProcessHandler {
             processes.add(process);
             final InputStream stdoutStream = process.getInputStream();
             final InputStream stderrStream = process.getErrorStream();
-            stdoutFuture = EXECUTOR_SERVICE.submit(() -> captureProcessOutput(stdoutStream, stdout));
-            stderrFuture = EXECUTOR_SERVICE.submit(() -> captureProcessOutput(stderrStream, stderr));
+            stdoutFuture = EXECUTOR_SERVICE.submit(
+                () -> captureProcessOutput(stdoutStream, stdout, DEFAULT_MAX_CAPTURE_LINES, DEFAULT_MAX_CAPTURE_BYTES)
+            );
+            stderrFuture = EXECUTOR_SERVICE.submit(
+                () -> captureProcessOutput(stderrStream, stderr, DEFAULT_MAX_CAPTURE_LINES, DEFAULT_MAX_CAPTURE_BYTES)
+            );
 
-            int exitCode = process.waitFor();
+            long effectiveTimeout = timeoutSeconds > 0 ? timeoutSeconds : DEFAULT_COMMAND_TIMEOUT_SECONDS;
+            boolean finished = process.waitFor(effectiveTimeout, TimeUnit.SECONDS);
+            if (!finished) {
+                Constants.LOG.error("Command timed out after {} seconds; terminating process.", effectiveTimeout);
+                process.destroy();
+                if (!process.waitFor(2, TimeUnit.SECONDS)) {
+                    process.destroyForcibly();
+                    process.waitFor(2, TimeUnit.SECONDS);
+                }
+                stdoutFuture.cancel(true);
+                stderrFuture.cancel(true);
+                processes.remove(process);
+                return null;
+            }
+
             awaitCapture(stdoutFuture);
             awaitCapture(stderrFuture);
             processes.remove(process);
+            int exitCode = process.exitValue();
             if (exitCode != 0) {
                 Constants.LOG.error("Command failed with exit code: {}", exitCode);
             }
@@ -84,7 +112,10 @@ public class ProcessHandler {
             return;
         }
         try {
-            future.get();
+            future.get(5, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            future.cancel(true);
+            Constants.LOG.debug("Timed out waiting for process output capture to finish");
         } catch (ExecutionException e) {
             Constants.LOG.debug("Process output capture failed: {}", e.getMessage());
         }
@@ -113,12 +144,32 @@ public class ProcessHandler {
     }
 
     private static void captureProcessOutput(InputStream inputStream, Consumer<String> cb) {
+        captureProcessOutput(inputStream, cb, Integer.MAX_VALUE, Long.MAX_VALUE);
+    }
+
+    private static void captureProcessOutput(InputStream inputStream, Consumer<String> cb, int maxLines, long maxBytes) {
+        int lineCount = 0;
+        long byteCount = 0L;
+        boolean truncated = false;
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
             String line;
             while ((line = reader.readLine()) != null) {
-                Constants.LOG.debug(line);
-                if (cb != null) {
-                    cb.accept(line);
+                if (Thread.currentThread().isInterrupted()) {
+                    break;
+                }
+                if (!truncated) {
+                    lineCount++;
+                    byteCount += line.length() + 1L;
+                    if (lineCount > maxLines || byteCount > maxBytes) {
+                        truncated = true;
+                        Constants.LOG.warn("Process output exceeded capture limit ({} lines / {} bytes); truncating further captured lines.",
+                            maxLines, maxBytes);
+                        continue;
+                    }
+                    Constants.LOG.debug(line);
+                    if (cb != null) {
+                        cb.accept(line);
+                    }
                 }
             }
         } catch (IOException e) {
