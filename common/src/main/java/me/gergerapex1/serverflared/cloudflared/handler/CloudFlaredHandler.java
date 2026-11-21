@@ -275,30 +275,82 @@ public class CloudFlaredHandler {
 	}
 
 
-	public boolean validateTunnelExist(TunnelInfo info) {
-        if(isDefaultTunnelUUID(info.getId())) return false;
-        // Try with name first then id
-        boolean exists = validateTunnelExist(info.getName());
-        if (!exists) {
-            exists = validateTunnelExist(info.getId());
-        }
-        return exists;
+    public enum TunnelLookupStatus {
+        EXISTS,
+        NOT_FOUND,
+        ERROR
     }
+
+    public boolean validateTunnelExist(TunnelInfo info) {
+        return lookupTunnelStatus(info) == TunnelLookupStatus.EXISTS;
+    }
+
     public boolean validateTunnelExist(String tunnelIdOrName) {
-        if (tunnelIdOrName == null || tunnelIdOrName.trim().isEmpty()) {
-            return false;
+        return lookupTunnelStatus(tunnelIdOrName) == TunnelLookupStatus.EXISTS;
+    }
+
+    public TunnelLookupStatus lookupTunnelStatus(TunnelInfo info) {
+        if (info == null) {
+            return TunnelLookupStatus.ERROR;
         }
-        AtomicBoolean doesExist = new AtomicBoolean(false);
-        Constants.LOG.info(tunnelIdOrName);
-        Process process = processHandler.run(new SubCommand(Constants.CMD_TUNNEL, Constants.CMD_INFO, tunnelIdOrName), output -> {
+        String name = info.getName();
+        String id = info.getId();
+        boolean hasName = name != null && !name.trim().isEmpty();
+        boolean hasId = !isDefaultTunnelUUID(id);
+
+        if (!hasName && !hasId) {
+            return TunnelLookupStatus.ERROR;
+        }
+
+        if (hasName) {
+            TunnelLookupStatus byName = lookupTunnelStatus(name.trim());
+            if (byName == TunnelLookupStatus.EXISTS || byName == TunnelLookupStatus.ERROR) {
+                return byName;
+            }
+        }
+
+        if (hasId) {
+            return lookupTunnelStatus(id.trim());
+        }
+
+        return TunnelLookupStatus.NOT_FOUND;
+    }
+
+    public TunnelLookupStatus lookupTunnelStatus(String tunnelIdOrName) {
+        if (tunnelIdOrName == null || tunnelIdOrName.trim().isEmpty()) {
+            return TunnelLookupStatus.ERROR;
+        }
+        final AtomicBoolean notFound = new AtomicBoolean(false);
+        final AtomicBoolean sawOutput = new AtomicBoolean(false);
+        Constants.LOG.debug("Checking cloudflared tunnel info for '{}'", tunnelIdOrName);
+        java.util.function.Consumer<String> lineConsumer = output -> {
+            if (output == null || output.trim().isEmpty()) {
+                return;
+            }
+            sawOutput.set(true);
             if (isTunnelNotFound(output)) {
                 tunnelNotFound(tunnelIdOrName);
-                doesExist.set(false);
-            } else {
-                doesExist.set(true);
+                notFound.set(true);
             }
-        }, Constants.LOG::error);
-        return process != null && process.exitValue() == 0 && doesExist.get();
+        };
+        Process process = processHandler.run(
+            new SubCommand(Constants.CMD_TUNNEL, Constants.CMD_INFO, tunnelIdOrName),
+            lineConsumer,
+            lineConsumer
+        );
+        if (process == null) {
+            return TunnelLookupStatus.ERROR;
+        }
+        int exitCode = process.exitValue();
+        if (exitCode == 0 && !notFound.get() && sawOutput.get()) {
+            return TunnelLookupStatus.EXISTS;
+        }
+        if (notFound.get()) {
+            return TunnelLookupStatus.NOT_FOUND;
+        }
+        Constants.LOG.warn("cloudflared tunnel info '{}' failed with exit code {} without confirming tunnel absence.",
+            tunnelIdOrName, exitCode);
+        return TunnelLookupStatus.ERROR;
     }
     /*
     public DetailedTunnelInfo getDetailedTunnelInfo(TunnelInfo tunnel) {
