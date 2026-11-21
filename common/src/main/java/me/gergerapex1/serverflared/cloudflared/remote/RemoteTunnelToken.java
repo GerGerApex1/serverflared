@@ -67,10 +67,26 @@ public final class RemoteTunnelToken {
         }
 
         validateTunnelUuid(tunnelId);
+        validateTunnelSecret(secret);
 
         // Normalize to canonical padded standard Base64 so cloudflared always receives a valid token.
         String canonicalToken = Base64.getEncoder().encodeToString(decodedBytes);
         return new RemoteTunnelToken(canonicalToken, accountId, tunnelId);
+    }
+
+    private static void validateTunnelSecret(String secret) {
+        byte[] decodedSecret;
+        try {
+            decodedSecret = Base64.getDecoder().decode(secret);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Cloudflare tunnel token secret ('s') is not valid Base64.", e);
+        }
+        if (decodedSecret == null || decodedSecret.length == 0) {
+            throw new IllegalArgumentException("Cloudflare tunnel token secret ('s') decodes to empty bytes.");
+        }
+        if (!Base64.getEncoder().encodeToString(decodedSecret).equals(secret)) {
+            throw new IllegalArgumentException("Cloudflare tunnel token secret ('s') is not canonical padded Base64.");
+        }
     }
 
     private static void validateTunnelUuid(String tunnelId) {

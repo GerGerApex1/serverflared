@@ -238,19 +238,59 @@ public class CloudflareApiClient {
         }
     }
 
-    public void updateTunnelIngress(String accountId, String tunnelId, String hostName, String serviceUrl)
-        throws CloudflareApiException {
-        JsonNode existingConfig = getTunnelConfiguration(accountId, tunnelId);
-        updateTunnelIngress(accountId, tunnelId, hostName, serviceUrl, existingConfig);
+    public static final class IngressUpdateReceipt {
+        private final String hostName;
+        private final boolean addedNewRule;
+        private final ObjectNode appliedRule;
+        private final ObjectNode previousRule;
+
+        public IngressUpdateReceipt(
+            String hostName,
+            boolean addedNewRule,
+            ObjectNode appliedRule,
+            ObjectNode previousRule
+        ) {
+            this.hostName = hostName;
+            this.addedNewRule = addedNewRule;
+            this.appliedRule = appliedRule;
+            this.previousRule = previousRule;
+        }
+
+        public String getHostName() {
+            return hostName;
+        }
+
+        public boolean isAddedNewRule() {
+            return addedNewRule;
+        }
+
+        public ObjectNode getAppliedRule() {
+            return appliedRule;
+        }
+
+        public ObjectNode getPreviousRule() {
+            return previousRule;
+        }
     }
 
-    public void updateTunnelIngress(
+    public IngressUpdateReceipt updateTunnelIngress(String accountId, String tunnelId, String hostName, String serviceUrl)
+        throws CloudflareApiException {
+        JsonNode existingConfig = getTunnelConfiguration(accountId, tunnelId);
+        return updateTunnelIngress(accountId, tunnelId, hostName, serviceUrl, existingConfig);
+    }
+
+    public IngressUpdateReceipt updateTunnelIngress(
         String accountId,
         String tunnelId,
         String hostName,
         String serviceUrl,
         JsonNode existingConfig
     ) throws CloudflareApiException {
+        String normalizedTarget = normalizeHost(hostName);
+        if (normalizedTarget.isEmpty()) {
+            throw new CloudflareApiException("Cannot update tunnel ingress: hostName is empty.");
+        }
+
         ObjectNode mergedConfig = (existingConfig != null && existingConfig.isObject())
             ? ((ObjectNode) existingConfig.deepCopy())
             : objectMapper.createObjectNode();
@@ -259,7 +299,10 @@ public class CloudflareApiClient {
         JsonNode existingIngress = mergedConfig.get("ingress");
 
         boolean updatedExistingRule = false;
+        int firstMatchingWildcardIndex = -1;
         ObjectNode existingCatchAll = null;
+        ObjectNode appliedRule = null;
+        ObjectNode previousRule = null;
 
         if (existingIngress != null && existingIngress.isArray()) {
             int size = existingIngress.size();
@@ -271,15 +314,46 @@ public class CloudflareApiClient {
                 ObjectNode ruleCopy = (ObjectNode) ruleNode.deepCopy();
                 String ruleHost = ruleCopy.path("hostname").asText("").trim();
                 String rulePath = ruleCopy.path("path").asText("").trim();
-                boolean isCatchAll = ruleHost.isEmpty() && rulePath.isEmpty() && i == size - 1;
+                boolean isCatchAll = (ruleHost.isEmpty() || "*".equals(ruleHost)) && rulePath.isEmpty() && i == size - 1;
 
                 if (isCatchAll) {
                     existingCatchAll = ruleCopy;
-                } else if (!updatedExistingRule && rulePath.isEmpty() && ruleHost.equalsIgnoreCase(hostName.trim())) {
-                    ruleCopy.put("hostname", hostName.trim());
-                    ruleCopy.put("service", serviceUrl);
+                    continue;
+                }
+
+                boolean exactMatch = normalizeHost(ruleHost).equals(normalizedTarget);
+                boolean wildcardMatch = !exactMatch && wildcardMatchesHost(ruleHost, normalizedTarget);
+
+                if ((exactMatch || wildcardMatch) && !rulePath.isEmpty()) {
+                    throw new CloudflareApiException(
+                        "Cannot update tunnel ingress for '" + hostName.trim()
+                            + "': existing path-scoped rule ('" + ruleHost + rulePath
+                            + "') overlaps this hostname and cannot be resolved without modifying existing routes."
+                    );
+                }
+
+                if (wildcardMatch) {
+                    if (firstMatchingWildcardIndex < 0) {
+                        firstMatchingWildcardIndex = mergedIngress.size();
+                    }
                     mergedIngress.add(ruleCopy);
-                    updatedExistingRule = true;
+                } else if (exactMatch) {
+                    if (firstMatchingWildcardIndex >= 0) {
+                        throw new CloudflareApiException(
+                            "Cannot update tunnel ingress for '" + hostName.trim()
+                                + "': an earlier matching wildcard rule shadows this exact-host route."
+                        );
+                    }
+                    if (!updatedExistingRule) {
+                        previousRule = (ObjectNode) ruleCopy.deepCopy();
+                        ruleCopy.put("hostname", hostName.trim());
+                        ruleCopy.put("service", serviceUrl);
+                        appliedRule = (ObjectNode) ruleCopy.deepCopy();
+                        mergedIngress.add(ruleCopy);
+                        updatedExistingRule = true;
+                    } else {
+                        mergedIngress.add(ruleCopy);
+                    }
                 } else {
                     mergedIngress.add(ruleCopy);
                 }
@@ -290,7 +364,12 @@ public class CloudflareApiClient {
             ObjectNode mcRule = objectMapper.createObjectNode();
             mcRule.put("hostname", hostName.trim());
             mcRule.put("service", serviceUrl);
-            mergedIngress.add(mcRule);
+            appliedRule = (ObjectNode) mcRule.deepCopy();
+            if (firstMatchingWildcardIndex >= 0) {
+                mergedIngress.insert(firstMatchingWildcardIndex, mcRule);
+            } else {
+                mergedIngress.add(mcRule);
+            }
         }
 
         if (existingCatchAll != null) {
@@ -311,6 +390,109 @@ public class CloudflareApiClient {
             "/accounts/" + urlEncode(accountId) + "/cfd_tunnel/" + urlEncode(tunnelId) + "/configurations",
             root
         );
+
+        return new IngressUpdateReceipt(hostName.trim(), !updatedExistingRule, appliedRule, previousRule);
+    }
+
+    /**
+     * Selectively rolls back only the single ingress rule touched by {@code receipt} against
+     * the live tunnel configuration, preserving any intervening edits to unrelated routes.
+     * Throws {@link CloudflareApiException} without overwriting if the managed rule was modified concurrently.
+     */
+    public void rollbackTunnelIngress(String accountId, String tunnelId, IngressUpdateReceipt receipt)
+        throws CloudflareApiException {
+        if (receipt == null || receipt.getAppliedRule() == null) {
+            throw new CloudflareApiException("Cannot roll back ingress: missing update receipt.");
+        }
+        JsonNode currentConfig = getTunnelConfiguration(accountId, tunnelId);
+        if (currentConfig == null || !currentConfig.isObject() || !currentConfig.path("ingress").isArray()) {
+            throw new CloudflareApiException(
+                "Rollback conflict for '" + receipt.getHostName()
+                    + "': current tunnel configuration is unavailable; refusing to overwrite."
+            );
+        }
+
+        String normalizedTarget = normalizeHost(receipt.getHostName());
+        ObjectNode updatedConfig = (ObjectNode) currentConfig.deepCopy();
+        ArrayNode currentIngress = (ArrayNode) updatedConfig.get("ingress");
+
+        int matchIndex = -1;
+        int matchCount = 0;
+        for (int i = 0; i < currentIngress.size(); i++) {
+            JsonNode ruleNode = currentIngress.get(i);
+            if (ruleNode == null || !ruleNode.isObject()) {
+                continue;
+            }
+            String ruleHost = ruleNode.path("hostname").asText("").trim();
+            String rulePath = ruleNode.path("path").asText("").trim();
+            if (rulePath.isEmpty() && normalizeHost(ruleHost).equals(normalizedTarget)) {
+                matchIndex = i;
+                matchCount++;
+            }
+        }
+
+        if (matchCount != 1 || matchIndex < 0) {
+            throw new CloudflareApiException(
+                "Rollback conflict for '" + receipt.getHostName()
+                    + "': expected 1 managed rule in live configuration but found " + matchCount
+                    + "; leaving newer configuration intact."
+            );
+        }
+
+        JsonNode liveRule = currentIngress.get(matchIndex);
+        if (!receipt.getAppliedRule().equals(liveRule)) {
+            throw new CloudflareApiException(
+                "Rollback conflict for '" + receipt.getHostName()
+                    + "': managed ingress rule was modified concurrently; leaving newer configuration intact."
+            );
+        }
+
+        if (receipt.isAddedNewRule()) {
+            currentIngress.remove(matchIndex);
+        } else {
+            if (receipt.getPreviousRule() == null) {
+                throw new CloudflareApiException(
+                    "Rollback conflict for '" + receipt.getHostName()
+                        + "': missing prior rule snapshot; leaving newer configuration intact."
+                );
+            }
+            currentIngress.set(matchIndex, receipt.getPreviousRule().deepCopy());
+        }
+
+        ObjectNode root = objectMapper.createObjectNode();
+        root.set("config", updatedConfig);
+
+        request(
+            "PUT",
+            "/accounts/" + urlEncode(accountId) + "/cfd_tunnel/" + urlEncode(tunnelId) + "/configurations",
+            root
+        );
+    }
+
+    private static String normalizeHost(String host) {
+        if (host == null) {
+            return "";
+        }
+        String trimmed = host.trim().toLowerCase();
+        if (trimmed.endsWith(".")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1);
+        }
+        return trimmed;
+    }
+
+    static boolean wildcardMatchesHost(String ruleHost, String normalizedTargetHost) {
+        String normRule = normalizeHost(ruleHost);
+        if (normRule.isEmpty() || normalizedTargetHost.isEmpty()) {
+            return false;
+        }
+        if ("*".equals(normRule)) {
+            return true;
+        }
+        if (normRule.startsWith("*.")) {
+            String suffix = normRule.substring(1); // includes leading '.'
+            return normalizedTargetHost.endsWith(suffix) && normalizedTargetHost.length() > suffix.length();
+        }
+        return false;
     }
 
     public void restoreTunnelConfiguration(String accountId, String tunnelId, JsonNode previousConfig)
