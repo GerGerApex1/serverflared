@@ -5,6 +5,7 @@ import org.gradle.api.Project
 import org.gradle.api.provider.Property
 import org.gradle.jvm.tasks.Jar
 import org.gradle.kotlin.dsl.assign
+import org.gradle.kotlin.dsl.withType
 
 object Publishing {
 	fun Project.configurePublishing(
@@ -44,19 +45,18 @@ object Publishing {
 
 			if (prebuiltJar.exists()) {
 				file.set(prebuiltJar)
-			} else if (loader == "spigot") {
-				val jarTask = tasks.named("shadeDowngradedApi").map { it as Jar }
-				file.set(jarTask.flatMap(Jar::getArchiveFile))
 			} else {
-				val jarTask = tasks.named("shadowJar").map { it as Jar }
-				file.set(jarTask.flatMap(Jar::getArchiveFile))
+				tasks.withType<Jar>().matching { it.name == ext.jarTask.get() }.configureEach {
+					file.set(archiveFile)
+				}
 			}
 
 			if (prebuiltSourcesJar.exists()) {
 				additionalFiles.from(prebuiltSourcesJar)
 			} else {
-				val srcJarTask = tasks.named(ext.sourcesJarTask.get()).map { it as Jar }
-				additionalFiles.from(srcJarTask.flatMap(Jar::getArchiveFile))
+				tasks.withType<Jar>().matching { it.name == ext.sourcesJarTask.get() }.configureEach {
+					additionalFiles.from(archiveFile)
+				}
 			}
 			type = releaseType
 			version = fullVersion

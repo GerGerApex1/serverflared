@@ -10,15 +10,13 @@ pluginManagement {
 		maven("https://maven.parchmentmc.org") { name = "ParchmentMC" }
 		maven("https://maven.minecraftforge.net/") { name = "Forge" }
 		maven("https://jitpack.io") { name = "Jitpack" }
-		maven("https://maven.architectury.dev/") { name = "Architectury" }
 		exclusiveContent {
 			forRepository { maven("https://api.modrinth.com/maven") { name = "Modrinth" } }
 			filter { includeGroup("maven.modrinth") }
 		}
-		maven("https://repo.essential.gg/repository/maven-public")
 		maven("https://repo.spongepowered.org/maven/")
 		maven("https://maven.wagyourtail.xyz/releases") { name = "WagYourTail Releases" }
-		maven("https://maven.wagyourtail.xyz/snapshots") { name = "WagYourTail Releases" }
+		maven("https://maven.wagyourtail.xyz/snapshots") { name = "WagYourTail Snapshots" }
 
 	}
 	includeBuild("build-logic")
@@ -31,6 +29,7 @@ plugins {
 buildscript {
 	dependencies {
 		classpath("org.apache.commons:commons-compress:1.27.1")
+		classpath("org.tukaani:xz:1.10")
 	}
 }
 val loaders = listOf("forge", "fabric", "neoforge")

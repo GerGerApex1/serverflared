@@ -1,36 +1,26 @@
-import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
-
 plugins {
 	id("mod-platform")
 	alias(libs.plugins.gradleup.shadow)
-	alias(libs.plugins.architectury.loom)
 }
 val (version, mcLoader) = stonecutter.current.project.split('-', limit = 2)
 
 stonecutter {
 	properties.tags(version, mcLoader)
 }
-loom {
-	accessWidenerPath = rootProject.file("modloaders/src/main/resources/serverflared.official.accesswidener")
-}
-java.toolchain.languageVersion = JavaLanguageVersion.of(25)
-if (mcLoader == "fabric") {
-	tasks.processResources {
-		filesMatching("fabric.mod.json") {
-			filter { line ->
-				line.replace(
-					"\"accessWidener\": \"serverflared.accesswidener\"",
-					"\"accessWidener\": \"serverflared.official.accesswidener\""
-				)
-			}
+
+unimined {
+	minecraft {
+		this.version = prop("loader.minecraft")
+		when (mcLoader) {
+			"fabric" -> loader("fabric", prop("fabric.loader"))
+			"neoforge" -> loader("neoforge", prop("loader.neoforge"))
+			"forge" -> loader("forge", prop("loader.forge"))
 		}
+		main.accessWideners.from(rootProject.file("modloaders/src/main/resources/serverflared.official.accesswidener"))
 	}
 }
-if (mcLoader == "neoforge") {
-	tasks.processResources {
-		from(rootProject.file("modloaders/src/main/resources/neoforge"))
-	}
-}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(25)
 platform {
 	loader.set(Loader.valueOf(mcLoader.uppercase()))
 	dependencies {
@@ -59,23 +49,11 @@ platform {
 		}
 	}
 }
-tasks.named<ShadowJar>("shadowJar") {
-	archiveClassifier.set("shadow")
-
-	relocate("com.fasterxml.jackson", "me.gergerapex1.shaded.fasterxml.jackson")
-	relocate("org.yaml.snakeyaml", "me.gergerapex1.shaded.org.yaml.snakeyaml")
-}
 
 tasks.assemble {
 	dependsOn("shadowJar")
 }
-repositories {
-	maven("https://maven.fabricmc.net/") { name = "Fabric" }
-	maven("https://maven.neoforged.net/releases/") { name = "NeoForged" }
-	maven("https://maven.minecraftforge.net/") { name = "Forge" }
-	maven("https://repo.spongepowered.org/maven/")
 
-}
 dependencies {
 	includeDep(libs.jackson.core)
 	includeDep(libs.jackson.dataformat.yaml)
@@ -83,25 +61,21 @@ dependencies {
 	includeDep(libs.jackson.annotations)
 	includeDep(libs.snakeyaml)
 
-	minecraft("com.mojang:minecraft:${prop("loader.minecraft")}")
 	if (mcLoader == "fabric") {
-		//implementation()
-		implementation(
-			fabricApi.module(
+		"modImplementation"(
+			unimined.loaderApiModule(
+				"fabric",
 				"fabric-lifecycle-events-v1",
 				prop("deps.fabric-api")
 			)
 		)
-		implementation(
-			fabricApi.module(
+		"modImplementation"(
+			unimined.loaderApiModule(
+				"fabric",
 				"fabric-api-base",
 				prop("deps.fabric-api")
 			)
 		)
-		implementation("net.fabricmc:fabric-loader:${property("fabric.loader")}")
-	}
-	if(mcLoader == "neoforge") {
-		"neoForge"("net.neoforged:neoforge:${prop("loader.neoforge")}")
 	}
 	common(project(":common"))
 }

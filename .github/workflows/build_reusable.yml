@@ -118,16 +118,15 @@ jobs:
       - name: Build with Gradle
         run: ./gradlew ${{ matrix.build_tasks }} -Pci.versions="${{ matrix.versions }}" --parallel --no-daemon
 
-      - name: Prune bulky Loom caches before cache save
+      - name: Prune bulky Unimined caches before cache save
         if: always()
         run: |
-          rm -rf ~/.gradle/caches/essential-loom \
-                 ~/.gradle/caches/fabric-loom \
+          rm -rf ~/.gradle/caches/unimined \
                  ~/.gradle/caches/minecraft-codev \
                  ~/.gradle/caches/paperweight-userdev \
                  ~/.gradle/caches/*/transforms \
                  ~/.gradle/daemon \
-                 .gradle/loom-cache \
+                 .gradle/unimined \
                  .gradle/configuration-cache
 
       - name: Upload batch artifacts

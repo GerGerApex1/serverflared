@@ -1,22 +1,28 @@
-import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
-import org.gradle.kotlin.dsl.named
-
 plugins {
 	id("mod-platform")
 	alias(libs.plugins.gradleup.shadow)
-	alias(libs.plugins.jvmdowngrader)
-	alias(libs.plugins.architectury.loom)
 }
-//extra["essential.defaults.loom.fabric-loader"] =
-//	"net.fabricmc:fabric-loader:${property("fabric.loader")}"
 
 stonecutter {
 	val (version, loader) = current.project.split('-', limit = 2)
 	properties.tags(version, loader)
 }
-loom {
-	accessWidenerPath = rootProject.file("modloaders/src/main/resources/serverflared.accesswidener")
+
+unimined {
+	minecraft {
+		version = prop("loader.minecraft")
+		loader("fabric", prop("fabric.loader"))
+		mappings {
+			intermediary()
+			builtin("mojmap") {
+				named("named")
+				mapNamespace("mojmap" to "named")
+			}
+		}
+		main.accessWideners.from(rootProject.file("modloaders/src/main/resources/serverflared.accesswidener"))
+	}
 }
+
 platform {
 	loader.set(Loader.FABRIC)
 	dependencies {
@@ -33,6 +39,7 @@ platform {
 		}
 	}
 }
+
 dependencies {
 	includeDep(libs.jackson.core)
 	includeDep(libs.jackson.dataformat.yaml)
@@ -40,14 +47,9 @@ dependencies {
 	includeDep(libs.jackson.annotations)
 	includeDep(libs.snakeyaml)
 	common(project(":common"))
-	minecraft("com.mojang:minecraft:${prop("loader.minecraft")}")
-	mappings(loom.officialMojangMappings())
-	modImplementation("net.fabricmc:fabric-loader:${prop("fabric.loader")}")
-	modImplementation("net.fabricmc.fabric-api:fabric-api:${prop("deps.fabric-api")}")
-
+	"modImplementation"("net.fabricmc.fabric-api:fabric-api:${prop("deps.fabric-api")}")
 }
 
-
 tasks.assemble {
-	//dependsOn("remapJar")
+	dependsOn(tasks.matching { it.name == "remapJar" })
 }

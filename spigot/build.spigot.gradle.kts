@@ -1,7 +1,6 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import org.gradle.kotlin.dsl.assign
 import org.gradle.kotlin.dsl.named
-import org.jetbrains.kotlin.gradle.utils.extendsFrom
 
 plugins {
 	id("mod-platform")

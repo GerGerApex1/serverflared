@@ -11,10 +11,12 @@ import ShadowTask.configureShadow
 import ShadowTask.createShadowImplConfiguration
 import Utils.resolveJavaVersion
 import dev.kikugie.stonecutter.build.StonecutterBuildExtension
+import org.gradle.api.Action
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.internal.extensions.stdlib.toDefaultLowerCase
 import org.gradle.kotlin.dsl.*
+import xyz.wagyourtail.unimined.UniminedExtension
 import javax.inject.Inject
 
 fun Project.prop(name: String): String = (findProperty(name) ?: "") as String
@@ -23,27 +25,57 @@ fun Project.env(variable: String): String? = providers.environmentVariable(varia
 
 fun Project.envTrue(variable: String): Boolean = env(variable)?.toDefaultLowerCase() == "true"
 
+val Project.unimined: UniminedExtension
+	get() = extensions.getByType<UniminedExtension>()
+
+fun Project.unimined(action: UniminedExtension.() -> Unit) {
+	extensions.configure<UniminedExtension>(action)
+}
+
 abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 	override fun apply(project: Project) = with(project) {
 		val stonecutter = extensions.getByType<StonecutterBuildExtension>()
 
 		val inferredLoader = project.buildFile.name.substringAfter('.').replace(".gradle.kts", "")
-		val jarTaskName = if (inferredLoader == "spigot") "shadeDowngradedApi" else "shadowJar"
+		val jarTaskName = when (inferredLoader) {
+			"spigot" -> "shadeDowngradedApi"
+			"deobfuscated" -> "shadowJar"
+			else -> "remapJar"
+		}
+		val isWindows = System.getProperty("os.name").lowercase().contains("win")
+		val sourcesJarTaskName = when {
+			inferredLoader == "spigot" || inferredLoader == "deobfuscated" -> "sourcesJar"
+			inferredLoader == "forge" && isWindows -> "sourcesJar"
+			else -> "remapSourcesJar"
+		}
+		if (inferredLoader == "forge" && isWindows) {
+			tasks.matching { it.name == "remapSourcesJar" }.configureEach {
+				enabled = false
+			}
+		}
 		val extension = extensions.create("platform", ModPlatformExtension::class.java).apply {
 			loader.convention(Loader.valueOf(inferredLoader.uppercase()))
 			jarTask.convention(jarTaskName)
-			sourcesJarTask.convention("sourcesJar")
+			sourcesJarTask.convention(sourcesJarTaskName)
 		}
 
 
 		listOf(
-			"org.jetbrains.kotlin.jvm",
-			"com.google.devtools.ksp",
-			"xyz.wagyourtail.jvmdowngrader",
+			"java",
 			"com.gradleup.shadow",
 		).forEach { apply(plugin = it) }
-		if(listOf(Loader.FABRIC, Loader.NEOFORGE, Loader.FORGE).contains(extension.loader.get())) {
-			apply(plugin = "gg.essential.loom")
+		extensions.configure<org.gradle.api.plugins.JavaPluginExtension>("java") {
+			withSourcesJar()
+			withJavadocJar()
+		}
+		if (extension.loader.get() == Loader.SPIGOT) {
+			apply(plugin = "xyz.wagyourtail.jvmdowngrader")
+		} else {
+			apply(plugin = "xyz.wagyourtail.unimined")
+			apply(plugin = "xyz.wagyourtail.unimined.adapter-stonecutter")
+			if (extension.loader.get() != Loader.DEOBFUSCATED) {
+				apply(plugin = "xyz.wagyourtail.unimined.jvmdg")
+			}
 		}
 		configureDependancies(stonecutter, extension)
 

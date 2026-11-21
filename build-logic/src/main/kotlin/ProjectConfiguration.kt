@@ -1,9 +1,7 @@
-import ShadowTask.configureDirectRemap
-import ShadowTask.configureManagedDowngrade
 import ShadowTask.configureSpigotShadowTask
-import Utils.resolveJavaVersion
+import ShadowTask.configureUniminedRemap
+import Utils.isVersionDeobfuscated
 import Utils.supportsJarInJar
-import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import dev.kikugie.stonecutter.build.StonecutterBuildExtension
 import org.gradle.api.JavaVersion
 import org.gradle.api.NamedDomainObjectContainer
@@ -71,14 +69,17 @@ object ProjectConfiguration {
 		tasks.withType<Jar>().configureEach {
 			archiveBaseName.set(modId)
 		}
+		if (!isVersionDeobfuscated()) {
+			tasks.named<Jar>("sourcesJar") {
+				exclude("serverflared.official.accesswidener")
+			}
+		}
 	}
 
 	fun Project.configureJava(
 		requiredJava: JavaVersion
 	) {
 		extensions.configure<JavaPluginExtension>("java") {
-			withSourcesJar()
-			withJavadocJar()
 			sourceCompatibility = requiredJava
 			targetCompatibility = requiredJava
 		}
@@ -103,7 +104,7 @@ object ProjectConfiguration {
 	) {
 		tasks.named<ProcessResources>("processResources") {
 			dependsOn(tasks.named("stonecutterGenerate"))
-			dependsOn("kspKotlin")
+			duplicatesStrategy = org.gradle.api.file.DuplicatesStrategy.EXCLUDE
 			val isFabric = loader == Loader.FABRIC
 			filesMatching("*.mixins.json") { expand("java" to "JAVA_${requiredJava.majorVersion}") }
 
@@ -154,7 +155,9 @@ object ProjectConfiguration {
 						"META-INF/neoforge.mods.toml",
 						"aw/*.cfg",
 						".cache",
-						"pack.mcmeta"
+						"pack.mcmeta",
+						"serverflared.accesswidener",
+						"serverflared.official.accesswidener"
 					)
 				}
 
@@ -163,6 +166,7 @@ object ProjectConfiguration {
 					exclude(
 						"META-INF/mods.toml",
 						"fabric.mod.json",
+						"*.accesswidener",
 						"aw/*.accesswidener",
 						".cache",
 						"pack.mcmeta"
@@ -174,6 +178,7 @@ object ProjectConfiguration {
 					exclude(
 						"META-INF/neoforge.mods.toml",
 						"fabric.mod.json",
+						"*.accesswidener",
 						"aw/*.accesswidener",
 						".cache"
 					)
@@ -215,26 +220,25 @@ object ProjectConfiguration {
 		configurations.matching { it.name == "implementation" }.all {
 			extendsFrom(commonDependancy)
 		}
-		if(supportsJarInJar(modPlatformExtension.loader.get().loader)) {
-			pluginManager.withPlugin("gg.essential.loom") {
+		if (supportsJarInJar(modPlatformExtension.loader.get().loader)) {
+			pluginManager.withPlugin("xyz.wagyourtail.unimined") {
 				configurations.matching { it.name == "include" }.all {
 					extendsFrom(includeDependancy)
 				}
 			}
 		}
-		if(!stonecutter.eval(stonecutter.current.version, ">=26.1")) {
-			val needDowngrade = JavaVersion.current() > resolveJavaVersion()
+		if (modPlatformExtension.loader.get() == Loader.SPIGOT) {
 			afterEvaluate {
-				if(modPlatformExtension.loader.get() == Loader.SPIGOT) {
-					afterEvaluate {
-						configureSpigotShadowTask()
-					}
-				} else {
-					if (needDowngrade) {
-						configureManagedDowngrade()
-					} else {
-						configureDirectRemap()
-					}
+				configureSpigotShadowTask()
+			}
+		} else if (!stonecutter.eval(stonecutter.current.version, ">=26.1")) {
+			afterEvaluate {
+				configureUniminedRemap()
+			}
+		} else {
+			afterEvaluate {
+				tasks.named("shadowJar", com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar::class.java) {
+					archiveClassifier.set("")
 				}
 			}
 		}
@@ -247,9 +251,9 @@ object ProjectConfiguration {
 		tasks.register<Copy>("buildAndCollect") {
 			group = "build"
 			from(
-				tasks.named(extension.jarTask.get()),
-				tasks.named(extension.sourcesJarTask.get()),
-				tasks.named("javadocJar").get()
+				tasks.matching { it.name == extension.jarTask.get() },
+				tasks.matching { it.name == extension.sourcesJarTask.get() },
+				tasks.matching { it.name == "javadocJar" }
 			)
 			into(rootProject.layout.buildDirectory.file("libs/$modVersion"))
 			dependsOn("build")
