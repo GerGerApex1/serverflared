@@ -1,5 +1,6 @@
 package me.gergerapex1.serverflared.cloudflared.remote;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
@@ -13,7 +14,8 @@ import java.util.regex.Pattern;
  * {"a": "<accountTag>", "t": "<tunnelID>", "s": "<tunnelSecret>"}
  */
 public final class RemoteTunnelToken {
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
+        .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     private static final Pattern UUID_PATTERN = Pattern.compile(
         "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
     );

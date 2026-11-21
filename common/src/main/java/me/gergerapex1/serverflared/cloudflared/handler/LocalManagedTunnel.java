@@ -182,7 +182,6 @@ public class LocalManagedTunnel extends AbstractManagedTunnel {
                 if (line == null) {
                     return;
                 }
-                Constants.LOG.debug(line);
                 if (tunnelAlreadyExist(line)) {
                     Constants.LOG.debug("Cannot create tunnel. Tunnel with name {} already exists", requestedName);
                     alreadyExists.set(true);
@@ -198,11 +197,12 @@ public class LocalManagedTunnel extends AbstractManagedTunnel {
                 if (errLine == null) {
                     return;
                 }
-                Constants.LOG.error(errLine);
                 if (tunnelAlreadyExist(errLine)) {
                     alreadyExists.set(true);
                 }
-            }
+            },
+            ProcessHandler.DEFAULT_COMMAND_TIMEOUT_SECONDS,
+            false
         );
 
         if (process == null) {

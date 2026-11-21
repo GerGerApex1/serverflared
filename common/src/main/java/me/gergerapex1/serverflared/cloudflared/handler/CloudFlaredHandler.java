@@ -192,10 +192,17 @@ public class CloudFlaredHandler {
 	private static final Pattern LOGIN_URL_REGEX = Pattern.compile("(https://dash\\.cloudflare\\.com/\\S+|https?://\\S+)", Pattern.CASE_INSENSITIVE);
 
 	public CompletableFuture<Boolean> authenticate() {
-		return authenticate(null);
+		return authenticate(null, null);
 	}
 
 	public CompletableFuture<Boolean> authenticate(java.util.function.Consumer<String> urlCallback) {
+		return authenticate(urlCallback, null);
+	}
+
+	public CompletableFuture<Boolean> authenticate(
+			java.util.function.Consumer<String> urlCallback,
+			java.util.function.BooleanSupplier isStillAllowed
+	) {
 		CompletableFuture<Boolean> result = new CompletableFuture<>();
 		AtomicBoolean urlCaptured = new AtomicBoolean(false);
 		java.util.function.Consumer<String> lineHandler = line -> {
@@ -223,14 +230,21 @@ public class CloudFlaredHandler {
 			}
 		};
 		try {
-			Process process = processHandler.runAsync(
+			Process process = processHandler.runAsyncIfAllowed(
 					new SubCommand(Constants.CMD_TUNNEL, Constants.CMD_LOGIN),
+					null,
+					null,
 					lineHandler,
 					err -> {
 						Constants.LOG.error(err);
 						lineHandler.accept(err);
-					}
+					},
+					isStillAllowed
 			);
+			if (process == null) {
+				result.complete(false);
+				return result;
+			}
 
 			Thread authShutdownHook = new Thread(() -> {
 				try {

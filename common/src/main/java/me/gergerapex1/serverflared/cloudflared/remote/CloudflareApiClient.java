@@ -10,10 +10,16 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URL;
 import java.net.URLEncoder;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.UUID;
 import me.gergerapex1.serverflared.Constants;
 
@@ -25,6 +31,8 @@ public class CloudflareApiClient {
     private static final int CONNECT_TIMEOUT_MS = 10_000;
     private static final int READ_TIMEOUT_MS = 15_000;
     private static final String ZERO_UUID = new UUID(0, 0).toString();
+    private static volatile Object cachedJava11HttpClient;
+    private static volatile Boolean java11HttpClientAvailable;
 
     private final String apiToken;
     private final String baseUrl;
@@ -323,11 +331,12 @@ public class CloudflareApiClient {
 
                 boolean exactMatch = normalizeHost(ruleHost).equals(normalizedTarget);
                 boolean wildcardMatch = !exactMatch && wildcardMatchesHost(ruleHost, normalizedTarget);
+                boolean hostlessPathMatch = ruleHost.isEmpty() && !rulePath.isEmpty();
 
-                if ((exactMatch || wildcardMatch) && !rulePath.isEmpty()) {
+                if ((exactMatch || wildcardMatch || hostlessPathMatch) && !rulePath.isEmpty()) {
                     throw new CloudflareApiException(
                         "Cannot update tunnel ingress for '" + hostName.trim()
-                            + "': existing path-scoped rule ('" + ruleHost + rulePath
+                            + "': existing path-scoped rule ('" + (ruleHost.isEmpty() ? "*" : ruleHost) + rulePath
                             + "') overlaps this hostname and cannot be resolved without modifying existing routes."
                     );
                 }
@@ -352,7 +361,11 @@ public class CloudflareApiClient {
                         mergedIngress.add(ruleCopy);
                         updatedExistingRule = true;
                     } else {
-                        mergedIngress.add(ruleCopy);
+                        throw new CloudflareApiException(
+                            "Cannot update tunnel ingress for '" + hostName.trim()
+                                + "': multiple existing pathless ingress rules match this hostname; "
+                                + "remove duplicate rules before retrying."
+                        );
                     }
                 } else {
                     mergedIngress.add(ruleCopy);
@@ -513,13 +526,75 @@ public class CloudflareApiClient {
         );
     }
 
-    public void syncDnsCname(String zoneId, String hostName, String tunnelId) throws CloudflareApiException {
-        String targetContent = tunnelId + ".cfargotunnel.com";
+    public static final class DnsCnameRecord {
+        private final String id;
+        private final String name;
+        private final String content;
+        private final boolean proxied;
+        private final int ttl;
+
+        public DnsCnameRecord(String id, String name, String content, boolean proxied, int ttl) {
+            this.id = id != null ? id.trim() : "";
+            this.name = name != null ? name.trim() : "";
+            this.content = content != null ? content.trim() : "";
+            this.proxied = proxied;
+            this.ttl = ttl;
+        }
+
+        public String getId() {
+            return id;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public String getContent() {
+            return content;
+        }
+
+        public boolean isProxied() {
+            return proxied;
+        }
+
+        public int getTtl() {
+            return ttl;
+        }
+
+        public boolean matchesTunnelTarget(String tunnelId) {
+            if (tunnelId == null || tunnelId.trim().isEmpty()) {
+                return false;
+            }
+            return (tunnelId.trim() + ".cfargotunnel.com").equalsIgnoreCase(content);
+        }
+
+        public boolean matchesSyncedTarget(String tunnelId) {
+            return matchesTunnelTarget(tunnelId) && proxied;
+        }
+    }
+
+    public DnsCnameRecord getDnsCnameRecord(String zoneId, String hostName) throws CloudflareApiException {
         JsonNode existing = request(
             "GET",
             "/zones/" + urlEncode(zoneId) + "/dns_records?type=CNAME&name=" + urlEncode(hostName),
             null
         );
+        if (existing != null && existing.isArray() && existing.size() > 0) {
+            JsonNode record = existing.get(0);
+            return new DnsCnameRecord(
+                record.path("id").asText(""),
+                record.path("name").asText(hostName),
+                record.path("content").asText(""),
+                record.path("proxied").asBoolean(false),
+                record.path("ttl").asInt(1)
+            );
+        }
+        return null;
+    }
+
+    public void syncDnsCname(String zoneId, String hostName, String tunnelId) throws CloudflareApiException {
+        String targetContent = tunnelId + ".cfargotunnel.com";
+        DnsCnameRecord existingRecord = getDnsCnameRecord(zoneId, hostName);
 
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("type", "CNAME");
@@ -528,19 +603,16 @@ public class CloudflareApiClient {
         payload.put("proxied", true);
         payload.put("ttl", 1);
 
-        if (existing != null && existing.isArray() && existing.size() > 0) {
-            JsonNode record = existing.get(0);
-            String recordId = record.path("id").asText("").trim();
-            String currentContent = record.path("content").asText("").trim();
-            boolean currentProxied = record.path("proxied").asBoolean(false);
-            if (targetContent.equalsIgnoreCase(currentContent) && currentProxied) {
+        if (existingRecord != null) {
+            if (existingRecord.matchesSyncedTarget(tunnelId)) {
                 Constants.LOG.debug("DNS CNAME for {} already points to {}", hostName, targetContent);
                 return;
             }
-            if (!recordId.isEmpty()) {
+            if (!existingRecord.getId().isEmpty()) {
+                // PATCH updates only the managed CNAME fields, preserving existing comments and tags.
                 request(
-                    "PUT",
-                    "/zones/" + urlEncode(zoneId) + "/dns_records/" + urlEncode(recordId),
+                    "PATCH",
+                    "/zones/" + urlEncode(zoneId) + "/dns_records/" + urlEncode(existingRecord.getId()),
                     payload
                 );
                 Constants.LOG.info("Updated DNS CNAME {} -> {}", hostName, targetContent);
@@ -552,6 +624,53 @@ public class CloudflareApiClient {
         Constants.LOG.info("Created DNS CNAME {} -> {}", hostName, targetContent);
     }
 
+    public void restoreDnsCnameRecord(
+        String zoneId,
+        String hostName,
+        String appliedTunnelId,
+        DnsCnameRecord priorRecord,
+        DnsCnameRecord currentRecord
+    ) throws CloudflareApiException {
+        if (priorRecord != null) {
+            String recordId = !priorRecord.getId().isEmpty()
+                ? priorRecord.getId()
+                : (currentRecord != null ? currentRecord.getId() : "");
+            if (recordId.isEmpty()) {
+                throw new CloudflareApiException("Cannot restore DNS CNAME for '" + hostName + "': missing record ID.");
+            }
+            ObjectNode payload = objectMapper.createObjectNode();
+            payload.put("type", "CNAME");
+            payload.put("name", !priorRecord.getName().isEmpty() ? priorRecord.getName() : hostName);
+            payload.put("content", priorRecord.getContent());
+            payload.put("proxied", priorRecord.isProxied());
+            payload.put("ttl", priorRecord.getTtl() > 0 ? priorRecord.getTtl() : 1);
+            request(
+                "PATCH",
+                "/zones/" + urlEncode(zoneId) + "/dns_records/" + urlEncode(recordId),
+                payload
+            );
+            Constants.LOG.info("Restored DNS CNAME {} -> {}", hostName, priorRecord.getContent());
+            return;
+        }
+
+        if (currentRecord == null || currentRecord.getId().isEmpty()) {
+            return;
+        }
+        if (appliedTunnelId != null && !appliedTunnelId.trim().isEmpty()
+            && !currentRecord.matchesTunnelTarget(appliedTunnelId)) {
+            throw new CloudflareApiException(
+                "Refusing to delete DNS CNAME for '" + hostName
+                    + "': live record no longer points to tunnel " + appliedTunnelId
+            );
+        }
+        request(
+            "DELETE",
+            "/zones/" + urlEncode(zoneId) + "/dns_records/" + urlEncode(currentRecord.getId()),
+            null
+        );
+        Constants.LOG.info("Removed newly created DNS CNAME {} during rollback.", hostName);
+    }
+
     private RemoteTunnelRecord parseTunnelRecord(JsonNode node) {
         String id = node.path("id").asText("").trim();
         String name = node.path("name").asText("").trim();
@@ -560,42 +679,26 @@ public class CloudflareApiClient {
         return new RemoteTunnelRecord(id, name, remoteConfig, token.isEmpty() ? null : token);
     }
 
+    private static final class HttpResponseData {
+        final int status;
+        final String body;
+
+        HttpResponseData(int status, String body) {
+            this.status = status;
+            this.body = body != null ? body : "";
+        }
+    }
+
     private JsonNode request(String method, String path, JsonNode body) throws CloudflareApiException {
-        HttpURLConnection conn = null;
         try {
-            URL url = new URL(baseUrl + path);
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod(method);
-            conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
-            conn.setReadTimeout(READ_TIMEOUT_MS);
-            conn.setRequestProperty("Authorization", "Bearer " + apiToken);
-            conn.setRequestProperty("Accept", "application/json");
-            conn.setRequestProperty("Content-Type", "application/json");
+            byte[] payloadBytes = (body != null) ? objectMapper.writeValueAsBytes(body) : null;
+            HttpResponseData response = ("PATCH".equalsIgnoreCase(method) && isJava11HttpClientAvailable())
+                ? executeViaJava11HttpClient(method, path, payloadBytes)
+                : executeViaHttpUrlConnection(method, path, payloadBytes);
 
-            if (body != null) {
-                conn.setDoOutput(true);
-                byte[] payloadBytes = objectMapper.writeValueAsBytes(body);
-                try (OutputStream os = conn.getOutputStream()) {
-                    os.write(payloadBytes);
-                }
-            }
-
-            int status = conn.getResponseCode();
+            int status = response.status;
             boolean is2xx = status >= 200 && status < 300;
-            String responseText;
-            try {
-                InputStream stream = is2xx ? conn.getInputStream() : conn.getErrorStream();
-                responseText = readAll(stream);
-            } catch (IOException readError) {
-                if (!is2xx) {
-                    throw new CloudflareApiException(
-                        status,
-                        "Cloudflare API " + method + " " + path + " failed (HTTP " + status + ") with unreadable response body",
-                        readError
-                    );
-                }
-                throw readError;
-            }
+            String responseText = response.body;
 
             JsonNode root;
             try {
@@ -630,11 +733,181 @@ public class CloudflareApiClient {
             throw e;
         } catch (IOException e) {
             throw new CloudflareApiException(-1, "Cloudflare API network error on " + method + " " + path + ": " + e.getMessage(), e);
+        }
+    }
+
+    private HttpResponseData executeViaHttpUrlConnection(String method, String path, byte[] payloadBytes)
+        throws CloudflareApiException, IOException {
+        HttpURLConnection conn = null;
+        try {
+            URL url = new URL(baseUrl + path);
+            conn = (HttpURLConnection) url.openConnection();
+            if ("PATCH".equalsIgnoreCase(method)) {
+                setPatchMethodOnHttpUrlConnection(conn);
+            } else {
+                conn.setRequestMethod(method);
+            }
+            conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
+            conn.setReadTimeout(READ_TIMEOUT_MS);
+            conn.setRequestProperty("Authorization", "Bearer " + apiToken);
+            conn.setRequestProperty("Accept", "application/json");
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            if (payloadBytes != null) {
+                conn.setDoOutput(true);
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(payloadBytes);
+                }
+            }
+
+            int status = conn.getResponseCode();
+            boolean is2xx = status >= 200 && status < 300;
+            String responseText;
+            try {
+                InputStream stream = is2xx ? conn.getInputStream() : conn.getErrorStream();
+                responseText = readAll(stream);
+            } catch (IOException readError) {
+                if (!is2xx) {
+                    throw new CloudflareApiException(
+                        status,
+                        "Cloudflare API " + method + " " + path + " failed (HTTP " + status + ") with unreadable response body",
+                        readError
+                    );
+                }
+                throw readError;
+            }
+            return new HttpResponseData(status, responseText);
         } finally {
             if (conn != null) {
                 conn.disconnect();
             }
         }
+    }
+
+    private static boolean isJava11HttpClientAvailable() {
+        Boolean available = java11HttpClientAvailable;
+        if (available != null) {
+            return available;
+        }
+        try {
+            Class.forName("java.net.http.HttpClient");
+            java11HttpClientAvailable = Boolean.TRUE;
+            return true;
+        } catch (ClassNotFoundException e) {
+            java11HttpClientAvailable = Boolean.FALSE;
+            return false;
+        }
+    }
+
+    private static Object getOrCreateJava11HttpClient() throws Exception {
+        Object client = cachedJava11HttpClient;
+        if (client != null) {
+            return client;
+        }
+        synchronized (CloudflareApiClient.class) {
+            if (cachedJava11HttpClient != null) {
+                return cachedJava11HttpClient;
+            }
+            Class<?> httpClientClass = Class.forName("java.net.http.HttpClient");
+            Class<?> builderClass = Class.forName("java.net.http.HttpClient$Builder");
+            Object builder = httpClientClass.getMethod("newBuilder").invoke(null);
+            builderClass.getMethod("connectTimeout", Duration.class)
+                .invoke(builder, Duration.ofMillis(CONNECT_TIMEOUT_MS));
+            Object built = builderClass.getMethod("build").invoke(builder);
+            cachedJava11HttpClient = built;
+            return built;
+        }
+    }
+
+    private HttpResponseData executeViaJava11HttpClient(String method, String path, byte[] payloadBytes)
+        throws CloudflareApiException, IOException {
+        try {
+            Object client = getOrCreateJava11HttpClient();
+            Class<?> httpClientClass = Class.forName("java.net.http.HttpClient");
+            Class<?> requestClass = Class.forName("java.net.http.HttpRequest");
+            Class<?> reqBuilderClass = Class.forName("java.net.http.HttpRequest$Builder");
+            Class<?> bodyPublishersClass = Class.forName("java.net.http.HttpRequest$BodyPublishers");
+            Class<?> bodyPublisherClass = Class.forName("java.net.http.HttpRequest$BodyPublisher");
+            Class<?> bodyHandlersClass = Class.forName("java.net.http.HttpResponse$BodyHandlers");
+            Class<?> bodyHandlerClass = Class.forName("java.net.http.HttpResponse$BodyHandler");
+            Class<?> responseClass = Class.forName("java.net.http.HttpResponse");
+
+            Object bodyPublisher = (payloadBytes != null)
+                ? bodyPublishersClass.getMethod("ofByteArray", byte[].class).invoke(null, new Object[]{payloadBytes})
+                : bodyPublishersClass.getMethod("noBody").invoke(null);
+
+            Object reqBuilder = requestClass.getMethod("newBuilder", URI.class)
+                .invoke(null, URI.create(baseUrl + path));
+            reqBuilderClass.getMethod("timeout", Duration.class)
+                .invoke(reqBuilder, Duration.ofMillis(READ_TIMEOUT_MS));
+            reqBuilderClass.getMethod("header", String.class, String.class)
+                .invoke(reqBuilder, "Authorization", "Bearer " + apiToken);
+            reqBuilderClass.getMethod("header", String.class, String.class)
+                .invoke(reqBuilder, "Accept", "application/json");
+            reqBuilderClass.getMethod("header", String.class, String.class)
+                .invoke(reqBuilder, "Content-Type", "application/json");
+            reqBuilderClass.getMethod("method", String.class, bodyPublisherClass)
+                .invoke(reqBuilder, method, bodyPublisher);
+            Object httpRequest = reqBuilderClass.getMethod("build").invoke(reqBuilder);
+
+            Object bodyHandler = bodyHandlersClass.getMethod("ofString", Charset.class)
+                .invoke(null, StandardCharsets.UTF_8);
+            Method sendMethod = httpClientClass.getMethod("send", requestClass, bodyHandlerClass);
+            Object httpResponse = sendMethod.invoke(client, httpRequest, bodyHandler);
+
+            int status = (Integer) responseClass.getMethod("statusCode").invoke(httpResponse);
+            String responseBody = (String) responseClass.getMethod("body").invoke(httpResponse);
+            return new HttpResponseData(status, responseBody);
+        } catch (InvocationTargetException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof IOException) {
+                throw (IOException) cause;
+            }
+            if (cause instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+                throw new CloudflareApiException(
+                    -1,
+                    "Cloudflare API request interrupted on " + method + " " + path + ": " + cause.getMessage(),
+                    cause
+                );
+            }
+            throw new IOException("Failed to execute HTTP " + method + " via Java 11 HttpClient", cause);
+        } catch (Exception e) {
+            throw new IOException("Failed to execute HTTP " + method + " via Java 11 HttpClient", e);
+        }
+    }
+
+    private static void setPatchMethodOnHttpUrlConnection(HttpURLConnection conn) throws IOException {
+        try {
+            Object target = conn;
+            while (target != null) {
+                Field methodField = findField(target.getClass(), "method");
+                if (methodField != null) {
+                    methodField.setAccessible(true);
+                    methodField.set(target, "PATCH");
+                }
+                Field delegateField = findField(target.getClass(), "delegate");
+                if (delegateField == null) {
+                    break;
+                }
+                delegateField.setAccessible(true);
+                target = delegateField.get(target);
+            }
+        } catch (Exception e) {
+            throw new IOException("Failed to configure HTTP PATCH method on HttpURLConnection", e);
+        }
+    }
+
+    private static Field findField(Class<?> clazz, String name) {
+        Class<?> current = clazz;
+        while (current != null) {
+            try {
+                return current.getDeclaredField(name);
+            } catch (NoSuchFieldException ignored) {
+                current = current.getSuperclass();
+            }
+        }
+        return null;
     }
 
     private static String readAll(InputStream stream) throws IOException {

@@ -4,7 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -34,6 +36,14 @@ public class YamlHandler {
 
     public <T> T readFromYaml(String filePath, Class<T> clazz) throws IOException {
         try (BufferedReader reader = Files.newBufferedReader(Paths.get(filePath))) {
+            return yamlMapper.readValue(reader, clazz);
+        }
+    }
+
+    public <T> T readFromYamlBytes(byte[] yamlBytes, Class<T> clazz) throws IOException {
+        try (BufferedReader reader = new BufferedReader(
+            new InputStreamReader(new ByteArrayInputStream(yamlBytes), StandardCharsets.UTF_8)
+        )) {
             return yamlMapper.readValue(reader, clazz);
         }
     }

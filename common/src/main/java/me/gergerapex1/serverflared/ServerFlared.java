@@ -1,6 +1,10 @@
 package me.gergerapex1.serverflared;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -10,6 +14,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BooleanSupplier;
 import me.gergerapex1.serverflared.cloudflared.handler.CloudFlaredHandler;
 import me.gergerapex1.serverflared.cloudflared.handler.LocalManagedTunnel;
 import me.gergerapex1.serverflared.cloudflared.handler.ManagedTunnel;
@@ -36,7 +41,9 @@ public class ServerFlared {
     private static final Object WRITE_OWNER_LOCK = new Object();
     private static final Object LIFECYCLE_LOCK = new Object();
     private static final AtomicLong lifecycleGeneration = new AtomicLong(0L);
-    private static final Set<ManagedTunnel> IN_FLIGHT_PREPARATIONS = ConcurrentHashMap.newKeySet();
+    private static final AtomicLong writeAttemptSeq = new AtomicLong(0L);
+    private static long activeWriteOwner = 0L;
+    private static final ConcurrentHashMap<Object, ManagedTunnel> IN_FLIGHT_PREPARATIONS = new ConcurrentHashMap<>();
     private static long preparedGeneration = -1L;
     private static long launchedGeneration = -1L;
     private static ManagedTunnel preparedTunnel;
@@ -95,7 +102,7 @@ public class ServerFlared {
                 modDisabled = true;
                 final long authGeneration = initGeneration;
                 // Prevent mod from starting until authentication is done
-                handler.authenticate().thenAccept(v -> {
+                handler.authenticate(null, () -> lifecycleGeneration.get() == authGeneration).thenAccept(v -> {
                     if (Boolean.TRUE.equals(v)) {
                         Constants.LOG.info("Authentication completed, resuming mod operation.");
                         resumeAfterAuthentication(authGeneration);
@@ -269,19 +276,63 @@ public class ServerFlared {
         Constants.LOG.info("Successfully stopped serverflared. See you next time!");
     }
 
+    private static void terminateInFlightPreparations() {
+        Set<ManagedTunnel> uniqueTunnels = Collections.newSetFromMap(new IdentityHashMap<ManagedTunnel, Boolean>());
+        for (ManagedTunnel preparing : IN_FLIGHT_PREPARATIONS.values()) {
+            if (preparing != null) {
+                uniqueTunnels.add(preparing);
+            }
+        }
+        for (ManagedTunnel preparing : uniqueTunnels) {
+            preparing.terminateProcesses();
+        }
+    }
+
     private static void terminateTrackedProcessesLockFree() {
         CloudFlaredHandler currentHandler = handler;
         if (currentHandler != null) {
             currentHandler.terminateProcesses();
         }
-        for (ManagedTunnel preparing : IN_FLIGHT_PREPARATIONS) {
-            if (preparing != null) {
-                preparing.terminateProcesses();
-            }
-        }
+        terminateInFlightPreparations();
         ManagedTunnel currentTunnel = activeTunnel;
         if (currentTunnel != null) {
             currentTunnel.terminateProcesses();
+        }
+    }
+
+    private static boolean claimOrVerifyWriteOwner(long attemptId, long baseGeneration) {
+        if (lifecycleGeneration.get() != baseGeneration) {
+            return false;
+        }
+        if (activeWriteOwner != 0L && activeWriteOwner != attemptId) {
+            return false;
+        }
+        activeWriteOwner = attemptId;
+        return true;
+    }
+
+    private static void reconcileRollbacks(List<Runnable> rollbacks) {
+        if (rollbacks == null) {
+            return;
+        }
+        List<Runnable> snapshot;
+        synchronized (rollbacks) {
+            if (rollbacks.isEmpty()) {
+                return;
+            }
+            snapshot = new ArrayList<>(rollbacks);
+            rollbacks.clear();
+        }
+        for (int i = snapshot.size() - 1; i >= 0; i--) {
+            Runnable action = snapshot.get(i);
+            if (action == null) {
+                continue;
+            }
+            try {
+                action.run();
+            } catch (Exception e) {
+                Constants.LOG.error("Failed to reconcile applied write during cancellation: {}", e.getMessage());
+            }
         }
     }
 
@@ -337,10 +388,24 @@ public class ServerFlared {
         }
     }
 
+    private static boolean isStartOwnerLocked(
+        long expectedGeneration,
+        CloudFlaredHandler targetHandler,
+        ManagedTunnel targetTunnel,
+        Config targetConfig
+    ) {
+        return lifecycleGeneration.get() == expectedGeneration
+            && handler == targetHandler
+            && activeTunnel == targetTunnel
+            && configManager != null
+            && configManager.CONFIG == targetConfig;
+    }
+
     private static boolean initiateTunnel(final long expectedGeneration) {
         final CloudFlaredHandler targetHandler;
         final ManagedTunnel targetTunnel;
         final Config targetConfig;
+        final Object prepAttemptToken = new Object();
 
         synchronized (LIFECYCLE_LOCK) {
             if (lifecycleGeneration.get() != expectedGeneration
@@ -356,67 +421,102 @@ public class ServerFlared {
             targetHandler = handler;
             targetTunnel = activeTunnel;
             targetConfig = configManager.CONFIG;
+            IN_FLIGHT_PREPARATIONS.put(prepAttemptToken, targetTunnel);
         }
 
+        final long startWriteAttemptId = writeAttemptSeq.incrementAndGet();
+        final List<Runnable> appliedWriteRollbacks = Collections.synchronizedList(new ArrayList<>());
+
         // Slow discovery stays outside LIFECYCLE_LOCK and WRITE_OWNER_LOCK; ownership is verified
-        // under WRITE_OWNER_LOCK BEFORE any external write (DNS / YAML / remote ingress) executes.
-        ManagedTunnel.WriteCommitCoordinator writeCoordinator = writeAction -> {
-            synchronized (WRITE_OWNER_LOCK) {
-                synchronized (LIFECYCLE_LOCK) {
-                    if (lifecycleGeneration.get() != expectedGeneration
-                        || handler != targetHandler
-                        || activeTunnel != targetTunnel
-                        || configManager == null
-                        || configManager.CONFIG != targetConfig) {
-                        Constants.LOG.debug("Aborting stale tunnel external write for generation {}.", expectedGeneration);
+        // under WRITE_OWNER_LOCK BEFORE and AFTER each external write (tunnel create / DNS / YAML / remote ingress).
+        ManagedTunnel.WriteCommitCoordinator writeCoordinator = new ManagedTunnel.WriteCommitCoordinator() {
+            @Override
+            public boolean executeIfOwner(BooleanSupplier writeAction) {
+                synchronized (WRITE_OWNER_LOCK) {
+                    if (activeWriteOwner != 0L && activeWriteOwner != startWriteAttemptId) {
+                        Constants.LOG.debug("Aborting tunnel external write while another write sequence is active.");
                         return false;
                     }
+                    synchronized (LIFECYCLE_LOCK) {
+                        if (!isStartOwnerLocked(expectedGeneration, targetHandler, targetTunnel, targetConfig)) {
+                            Constants.LOG.debug("Aborting stale tunnel external write for generation {}.", expectedGeneration);
+                            return false;
+                        }
+                    }
+                    activeWriteOwner = startWriteAttemptId;
+                    if (!writeAction.getAsBoolean()) {
+                        return false;
+                    }
+                    synchronized (LIFECYCLE_LOCK) {
+                        return isStartOwnerLocked(expectedGeneration, targetHandler, targetTunnel, targetConfig);
+                    }
                 }
-                return writeAction.getAsBoolean();
+            }
+
+            @Override
+            public boolean isStillOwner() {
+                synchronized (LIFECYCLE_LOCK) {
+                    return isStartOwnerLocked(expectedGeneration, targetHandler, targetTunnel, targetConfig);
+                }
+            }
+
+            @Override
+            public void onAppliedWrite(Runnable rollbackAction) {
+                if (rollbackAction != null) {
+                    appliedWriteRollbacks.add(rollbackAction);
+                }
             }
         };
 
-        TunnelInfo prepared;
-        IN_FLIGHT_PREPARATIONS.add(targetTunnel);
         try {
-            prepared = targetTunnel.prepareTunnel(
+            if (lifecycleGeneration.get() != expectedGeneration) {
+                return false;
+            }
+            TunnelInfo prepared = targetTunnel.prepareTunnel(
                 targetConfig,
                 ModPlatformInstance.xplat().getLocalAddress(),
                 ModPlatformInstance.xplat().getServerPort(),
                 writeCoordinator
             );
-        } finally {
-            IN_FLIGHT_PREPARATIONS.remove(targetTunnel);
-        }
 
-        if (prepared == null) {
-            synchronized (LIFECYCLE_LOCK) {
-                if (lifecycleGeneration.get() == expectedGeneration && activeTunnel == targetTunnel) {
-                    tunnelPrepared = false;
-                    preparedGeneration = -1L;
-                    preparedTunnel = null;
-                    preparedConfig = null;
+            if (prepared == null) {
+                synchronized (LIFECYCLE_LOCK) {
+                    if (lifecycleGeneration.get() == expectedGeneration && activeTunnel == targetTunnel) {
+                        tunnelPrepared = false;
+                        preparedGeneration = -1L;
+                        preparedTunnel = null;
+                        preparedConfig = null;
+                    }
                 }
-            }
-            return false;
-        }
-
-        synchronized (LIFECYCLE_LOCK) {
-            if (lifecycleGeneration.get() != expectedGeneration
-                || handler != targetHandler
-                || activeTunnel != targetTunnel
-                || configManager == null
-                || configManager.CONFIG != targetConfig) {
-                Constants.LOG.debug("Discarding stale tunnel preparation result for generation {}.", expectedGeneration);
                 return false;
             }
-            info = prepared;
-            tunnelPrepared = true;
-            preparedGeneration = expectedGeneration;
-            preparedTunnel = targetTunnel;
-            preparedConfig = targetConfig;
-            updateConfigWithTunnelInfo(targetConfig, prepared);
+
+            boolean published = false;
+            synchronized (LIFECYCLE_LOCK) {
+                if (!isStartOwnerLocked(expectedGeneration, targetHandler, targetTunnel, targetConfig)) {
+                    Constants.LOG.debug("Discarding stale tunnel preparation result for generation {}.", expectedGeneration);
+                } else {
+                    info = prepared;
+                    tunnelPrepared = true;
+                    preparedGeneration = expectedGeneration;
+                    preparedTunnel = targetTunnel;
+                    preparedConfig = targetConfig;
+                    updateConfigWithTunnelInfo(targetConfig, prepared);
+                    published = true;
+                }
+            }
+            if (!published) {
+                reconcileRollbacks(appliedWriteRollbacks);
+                return false;
+            }
             return true;
+        } finally {
+            IN_FLIGHT_PREPARATIONS.remove(prepAttemptToken);
+            synchronized (WRITE_OWNER_LOCK) {
+                if (activeWriteOwner == startWriteAttemptId) {
+                    activeWriteOwner = 0L;
+                }
+            }
         }
     }
 
@@ -424,20 +524,7 @@ public class ServerFlared {
         if (tunnel == null || targetConfig == null || configManager == null || configManager.CONFIG != targetConfig) {
             return;
         }
-        boolean changed = false;
-        if (tunnel.getId() != null && !tunnel.getId().isEmpty()
-            && !tunnel.getId().equals(targetConfig.getTunnelId())) {
-            targetConfig.setTunnelId(tunnel.getId());
-            changed = true;
-        }
-        if (tunnel.getName() != null && !tunnel.getName().isEmpty()
-            && !tunnel.getName().equals(targetConfig.getTunnelName())) {
-            targetConfig.setTunnelName(tunnel.getName());
-            changed = true;
-        }
-        if (changed) {
-            configManager.saveConfig();
-        }
+        configManager.updateTunnelIdentityIfUnchanged(targetConfig, tunnel.getId(), tunnel.getName());
     }
 
     public static ConfigManager getConfigManager() {
@@ -494,6 +581,15 @@ public class ServerFlared {
                     sender.sendMessage("\u00A7e[ServerFlared] Tunnel is already running" + (pid > 0 ? " (PID: " + pid + ")" : "") + ".");
                     return;
                 }
+                Config currentConfig = (configManager != null) ? configManager.CONFIG : null;
+                mode = getConfiguredMode();
+                if (ConfigManager.isPendingFirstTimeSetup(currentConfig)) {
+                    sender.sendMessage(
+                        "\u00A7e[ServerFlared] Start aborted: required settings are incomplete for "
+                            + mode.name() + " mode. Update config.yml, then run /serverflared reload."
+                    );
+                    return;
+                }
                 if (handler == null) {
                     handler = CloudFlaredHandler.createInstance();
                 }
@@ -501,7 +597,6 @@ public class ServerFlared {
                     sender.sendMessage("\u00A7c[ServerFlared] Failed to initialize cloudflared binary handler.");
                     return;
                 }
-                mode = getConfiguredMode();
                 if (activeTunnel == null || activeTunnel.getMode() != mode) {
                     activeTunnel = createTunnelHandler(mode, handler);
                 }
@@ -518,7 +613,11 @@ public class ServerFlared {
 
             boolean prepared = initiateTunnel(startGeneration);
             if (!prepared) {
-                sender.sendMessage("\u00A7c[ServerFlared] Failed to prepare tunnel: " + targetTunnel.getLastConnectionDetail());
+                if (lifecycleGeneration.get() != startGeneration) {
+                    sender.sendMessage("\u00A7e[ServerFlared] Tunnel start was canceled by a concurrent stop or reload.");
+                } else {
+                    sender.sendMessage("\u00A7c[ServerFlared] Failed to prepare tunnel: " + targetTunnel.getLastConnectionDetail());
+                }
                 return;
             }
 
@@ -563,11 +662,7 @@ public class ServerFlared {
                 preparedTunnel = null;
                 preparedConfig = null;
                 tunnelInitStarted.set(false);
-                for (ManagedTunnel preparing : IN_FLIGHT_PREPARATIONS) {
-                    if (preparing != null) {
-                        preparing.terminateProcesses();
-                    }
-                }
+                terminateInFlightPreparations();
 
                 wasRunning = activeTunnel != null && activeTunnel.isTunnelRunning();
                 toTerminate = activeTunnel;
@@ -594,6 +689,7 @@ public class ServerFlared {
             final CloudFlaredHandler candidateHandler;
             final ManagedTunnel candidateTunnel;
             final long reloadBaseGeneration;
+            final Object prepAttemptToken = new Object();
 
             // Validate candidate configuration and prerequisites under LIFECYCLE_LOCK BEFORE stopping active tunnel.
             synchronized (LIFECYCLE_LOCK) {
@@ -615,10 +711,17 @@ public class ServerFlared {
 
                 candidateTunnel = createTunnelHandler(candidateMode, candidateHandler);
                 if (candidateTunnel.requiresCliAuth() && !candidateHandler.isAuthenticated()) {
-                    sender.sendMessage(
-                        "\u00A7e[ServerFlared] Reload aborted: cloudflared is not authenticated for LOCAL mode. "
-                            + "Run /serverflared login first. Active tunnel left unchanged."
-                    );
+                    if (getConfiguredMode().isRemote()) {
+                        sender.sendMessage(
+                            "\u00A7e[ServerFlared] Reload aborted: cloudflared is not authenticated for LOCAL mode. "
+                                + "Run 'cloudflared tunnel login' as the server user to generate cert.pem, then retry /serverflared reload. Active tunnel left unchanged."
+                        );
+                    } else {
+                        sender.sendMessage(
+                            "\u00A7e[ServerFlared] Reload aborted: cloudflared is not authenticated for LOCAL mode. "
+                                + "Run /serverflared login first. Active tunnel left unchanged."
+                        );
+                    }
                     return;
                 }
                 if (ConfigManager.isPendingFirstTimeSetup(candidateConfig)) {
@@ -632,138 +735,166 @@ public class ServerFlared {
                 reloadBaseGeneration = lifecycleGeneration.get();
                 candidateTunnel.setState(TunnelState.STARTING);
                 candidateTunnel.setLastConnectionDetail("Preparing reloaded tunnel configuration...");
+                IN_FLIGHT_PREPARATIONS.put(prepAttemptToken, candidateTunnel);
             }
 
-            // Perform slow discovery OUTSIDE LIFECYCLE_LOCK so cleanup() can cancel immediately.
-            // Ownership and external writes are coordinated under WRITE_OWNER_LOCK -> LIFECYCLE_LOCK.
-            final AtomicBoolean swapCommitted = new AtomicBoolean(false);
-            final AtomicLong swappedGeneration = new AtomicLong(-1L);
+            // Keep candidateTunnel private during preparation; verify ownership before and after each external write,
+            // and publish config, tunnel, info, and prepared state atomically only after prepareTunnel completes.
+            final long reloadAttemptId = writeAttemptSeq.incrementAndGet();
+            final AtomicBoolean canceledByOwnership = new AtomicBoolean(false);
+            final List<Runnable> appliedWriteRollbacks = Collections.synchronizedList(new ArrayList<>());
 
-            ManagedTunnel.WriteCommitCoordinator reloadCoordinator = writeAction -> {
-                synchronized (WRITE_OWNER_LOCK) {
-                    if (lifecycleGeneration.get() != reloadBaseGeneration) {
-                        return false;
-                    }
-                    if (!writeAction.getAsBoolean()) {
-                        return false;
-                    }
-                    synchronized (LIFECYCLE_LOCK) {
-                        if (lifecycleGeneration.get() != reloadBaseGeneration) {
-                            // cleanup() or another reload ran during writeAction; do not install.
+            ManagedTunnel.WriteCommitCoordinator reloadCoordinator = new ManagedTunnel.WriteCommitCoordinator() {
+                @Override
+                public boolean executeIfOwner(BooleanSupplier writeAction) {
+                    synchronized (WRITE_OWNER_LOCK) {
+                        if (!claimOrVerifyWriteOwner(reloadAttemptId, reloadBaseGeneration)) {
+                            canceledByOwnership.set(true);
                             return false;
                         }
-                        long newGen = lifecycleGeneration.incrementAndGet();
-                        if (activeTunnel != null) {
-                            activeTunnel.terminateProcesses();
+                        if (!writeAction.getAsBoolean()) {
+                            return false;
                         }
-                        handler = candidateHandler;
-                        configManager.applyConfig(candidateConfig);
-                        activeTunnel = candidateTunnel;
-                        tunnelPrepared = true;
-                        preparedGeneration = newGen;
-                        preparedTunnel = candidateTunnel;
-                        preparedConfig = candidateConfig;
-                        launchedGeneration = -1L;
-                        swappedGeneration.set(newGen);
-                        swapCommitted.set(true);
+                        if (lifecycleGeneration.get() != reloadBaseGeneration) {
+                            canceledByOwnership.set(true);
+                            return false;
+                        }
+                        return true;
                     }
-                    return true;
+                }
+
+                @Override
+                public boolean isStillOwner() {
+                    return lifecycleGeneration.get() == reloadBaseGeneration;
+                }
+
+                @Override
+                public void onAppliedWrite(Runnable rollbackAction) {
+                    if (rollbackAction != null) {
+                        appliedWriteRollbacks.add(rollbackAction);
+                    }
                 }
             };
 
-            TunnelInfo candidateInfo;
-            IN_FLIGHT_PREPARATIONS.add(candidateTunnel);
             try {
-                candidateInfo = candidateTunnel.prepareTunnel(
+                if (lifecycleGeneration.get() != reloadBaseGeneration) {
+                    sender.sendMessage("\u00A7e[ServerFlared] Reload canceled by a concurrent stop or shutdown.");
+                    return;
+                }
+
+                TunnelInfo candidateInfo = candidateTunnel.prepareTunnel(
                     candidateConfig,
                     ModPlatformInstance.xplat().getLocalAddress(),
                     ModPlatformInstance.xplat().getServerPort(),
                     reloadCoordinator
                 );
-            } finally {
-                IN_FLIGHT_PREPARATIONS.remove(candidateTunnel);
-            }
 
-            if (candidateInfo == null) {
-                if (lifecycleGeneration.get() != reloadBaseGeneration) {
-                    sender.sendMessage("\u00A7e[ServerFlared] Reload canceled by a concurrent stop or shutdown.");
-                } else {
-                    sender.sendMessage(
-                        "\u00A7c[ServerFlared] Reload aborted: failed to prepare tunnel ("
-                            + candidateTunnel.getLastConnectionDetail() + "). Active tunnel left unchanged."
-                    );
-                }
-                return;
-            }
-
-            // If prepareTunnel did not need an external write (e.g., REMOTE_TOKEN mode), claim ownership & swap now.
-            if (!swapCommitted.get()) {
-                synchronized (WRITE_OWNER_LOCK) {
-                    synchronized (LIFECYCLE_LOCK) {
-                        if (lifecycleGeneration.get() != reloadBaseGeneration) {
-                            sender.sendMessage("\u00A7e[ServerFlared] Reload canceled by a concurrent stop or shutdown.");
-                            return;
-                        }
-                        long newGen = lifecycleGeneration.incrementAndGet();
-                        if (activeTunnel != null) {
-                            activeTunnel.terminateProcesses();
-                        }
-                        handler = candidateHandler;
-                        configManager.applyConfig(candidateConfig);
-                        activeTunnel = candidateTunnel;
-                        tunnelPrepared = true;
-                        preparedGeneration = newGen;
-                        preparedTunnel = candidateTunnel;
-                        preparedConfig = candidateConfig;
-                        launchedGeneration = -1L;
-                        swappedGeneration.set(newGen);
-                        swapCommitted.set(true);
+                if (candidateInfo == null) {
+                    if (canceledByOwnership.get() || lifecycleGeneration.get() != reloadBaseGeneration) {
+                        sender.sendMessage("\u00A7e[ServerFlared] Reload canceled by a concurrent reload, stop, or shutdown.");
+                    } else {
+                        sender.sendMessage(
+                            "\u00A7c[ServerFlared] Reload aborted: failed to prepare tunnel ("
+                                + candidateTunnel.getLastConnectionDetail() + "). Active tunnel left unchanged."
+                        );
                     }
-                }
-            }
-
-            sender.sendMessage("\u00A77[ServerFlared] Config validated (tunnelMode=" + candidateMode.name()
-                + ", commandPermissionMode=" + candidateConfig.getCommandPermissionMode()
-                + "). Starting reloaded tunnel...");
-
-            boolean started;
-            synchronized (LIFECYCLE_LOCK) {
-                long expectedGen = swappedGeneration.get();
-                if (lifecycleGeneration.get() != expectedGen || activeTunnel != candidateTunnel) {
-                    sender.sendMessage("\u00A7e[ServerFlared] Reload canceled before tunnel launch.");
                     return;
                 }
-                info = candidateInfo;
-                updateConfigWithTunnelInfo(candidateConfig, candidateInfo);
-                notifyCommandTreeSync();
 
-                started = candidateTunnel.startTunnel(candidateConfig, candidateInfo);
-                if (started) {
-                    launchedGeneration = expectedGen;
-                    modDisabled = false;
-                    firstTimeMode = false;
+                if (lifecycleGeneration.get() != reloadBaseGeneration) {
+                    reconcileRollbacks(appliedWriteRollbacks);
+                    sender.sendMessage("\u00A7e[ServerFlared] Reload canceled by a concurrent stop or shutdown.");
+                    return;
                 }
-            }
 
-            if (started) {
+                sender.sendMessage("\u00A77[ServerFlared] Config validated (tunnelMode=" + candidateMode.name()
+                    + ", commandPermissionMode=" + candidateConfig.getCommandPermissionMode()
+                    + "). Starting reloaded tunnel...");
+
+                boolean canceledBeforePublish = false;
+                boolean launchFailed = false;
+
+                synchronized (WRITE_OWNER_LOCK) {
+                    synchronized (LIFECYCLE_LOCK) {
+                        if (!claimOrVerifyWriteOwner(reloadAttemptId, reloadBaseGeneration)) {
+                            canceledBeforePublish = true;
+                        } else {
+                            // Start the candidate BEFORE stopping activeTunnel so a launch failure leaves the
+                            // existing working connector running uninterrupted with its prior configuration intact.
+                            boolean started = candidateTunnel.startTunnel(candidateConfig, candidateInfo);
+                            if (!started) {
+                                candidateTunnel.terminateProcesses();
+                                launchFailed = true;
+                            } else if (lifecycleGeneration.get() != reloadBaseGeneration) {
+                                candidateTunnel.terminateProcesses();
+                                canceledBeforePublish = true;
+                            } else {
+                                long newGen = lifecycleGeneration.incrementAndGet();
+                                ManagedTunnel previousTunnel = activeTunnel;
+                                handler = candidateHandler;
+                                configManager.applyConfig(candidateConfig);
+                                activeTunnel = candidateTunnel;
+                                info = candidateInfo;
+                                tunnelPrepared = true;
+                                preparedGeneration = newGen;
+                                preparedTunnel = candidateTunnel;
+                                preparedConfig = candidateConfig;
+                                launchedGeneration = newGen;
+                                modDisabled = false;
+                                firstTimeMode = false;
+                                updateConfigWithTunnelInfo(candidateConfig, candidateInfo);
+                                notifyCommandTreeSync();
+                                if (previousTunnel != null && previousTunnel != candidateTunnel) {
+                                    previousTunnel.terminateProcesses();
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (canceledBeforePublish) {
+                    reconcileRollbacks(appliedWriteRollbacks);
+                    sender.sendMessage("\u00A7e[ServerFlared] Reload canceled by a concurrent reload, stop, or shutdown.");
+                    return;
+                }
+                if (launchFailed) {
+                    reconcileRollbacks(appliedWriteRollbacks);
+                    sender.sendMessage(
+                        "\u00A7c[ServerFlared] Reload aborted: failed to start cloudflared tunnel. Active tunnel left unchanged."
+                    );
+                    return;
+                }
+
                 sender.sendMessage("\u00A7a[ServerFlared] Reload complete! Tunnel running (" + candidateMode.name()
                     + ") for \u00A7f" + candidateConfig.getHostName());
-            } else {
-                sender.sendMessage("\u00A7c[ServerFlared] Config reloaded, but failed to start cloudflared tunnel.");
+            } finally {
+                IN_FLIGHT_PREPARATIONS.remove(prepAttemptToken);
+                synchronized (WRITE_OWNER_LOCK) {
+                    if (activeWriteOwner == reloadAttemptId) {
+                        activeWriteOwner = 0L;
+                    }
+                }
             }
         }, ASYNC_EXECUTOR);
     }
 
     public static CompletableFuture<Void> loginAsync(final CommandSenderAdapter sender) {
+        final long requestedGeneration = lifecycleGeneration.get();
         return CompletableFuture.runAsync(() -> {
             final long authGeneration;
-            final CloudFlaredHandler authHandler;
+            final CompletableFuture<Boolean> authFuture;
 
             synchronized (LIFECYCLE_LOCK) {
+                if (lifecycleGeneration.get() != requestedGeneration) {
+                    sender.sendMessage("\u00A7e[ServerFlared] Cloudflared login was canceled by a concurrent stop or shutdown.");
+                    return;
+                }
                 TunnelMode mode = getConfiguredMode();
                 if (mode.isRemote()) {
-                    sender.sendMessage("\u00A7e[ServerFlared] CLI login (cert.pem) is not required in "
-                        + mode.name() + " mode. Configure remote settings in config.yml and run /serverflared reload.");
+                    sender.sendMessage(
+                        "\u00A7e[ServerFlared] CLI login (cert.pem) is not required in " + mode.name()
+                            + " mode. If you are switching to LOCAL mode, run 'cloudflared tunnel login' as the server user to generate cert.pem, then retry /serverflared reload."
+                    );
                     return;
                 }
                 if (handler == null) {
@@ -781,23 +912,35 @@ public class ServerFlared {
                     sender.sendMessage("\u00A7e[ServerFlared] Cloudflared login is already in progress. Check console/chat for the login link.");
                     return;
                 }
-                authGeneration = lifecycleGeneration.get();
-                authHandler = handler;
+                authGeneration = requestedGeneration;
+                if (lifecycleGeneration.get() != authGeneration) {
+                    loginInProgress.set(false);
+                    sender.sendMessage("\u00A7e[ServerFlared] Cloudflared login was canceled by a concurrent stop or shutdown.");
+                    return;
+                }
+                sender.sendMessage("\u00A7e[ServerFlared] Launching 'cloudflared tunnel login'... Waiting for authorization URL...");
+                try {
+                    authFuture = handler.authenticate(url -> {
+                        if (!sender.isConsole()) {
+                            sender.sendClickableUrl(
+                                "\u00A7a[ServerFlared] \u00A7eClick here to authenticate Cloudflared: \u00A7b\u00A7n" + url,
+                                url
+                            );
+                        } else {
+                            sender.sendMessage("[ServerFlared] Authenticate Cloudflared at: " + url);
+                        }
+                    }, () -> lifecycleGeneration.get() == authGeneration);
+                } catch (Throwable t) {
+                    loginInProgress.set(false);
+                    throw t;
+                }
             }
 
-            sender.sendMessage("\u00A7e[ServerFlared] Launching 'cloudflared tunnel login'... Waiting for authorization URL...");
-            authHandler.authenticate(url -> {
-                if (!sender.isConsole()) {
-                    sender.sendClickableUrl(
-                        "\u00A7a[ServerFlared] \u00A7eClick here to authenticate Cloudflared: \u00A7b\u00A7n" + url,
-                        url
-                    );
-                } else {
-                    sender.sendMessage("[ServerFlared] Authenticate Cloudflared at: " + url);
-                }
-            }).whenComplete((authenticated, throwable) -> {
+            authFuture.whenComplete((authenticated, throwable) -> {
                 loginInProgress.set(false);
-                if (throwable != null || !Boolean.TRUE.equals(authenticated)) {
+                if (lifecycleGeneration.get() != authGeneration) {
+                    sender.sendMessage("\u00A7e[ServerFlared] Cloudflared login was canceled by a concurrent stop or shutdown.");
+                } else if (throwable != null || !Boolean.TRUE.equals(authenticated)) {
                     sender.sendMessage("\u00A7c[ServerFlared] Cloudflared authentication failed or timed out.");
                 } else {
                     sender.sendMessage("\u00A7a[ServerFlared] Cloudflared authentication completed successfully!");

@@ -7,6 +7,14 @@ public interface ManagedTunnel {
     @FunctionalInterface
     interface WriteCommitCoordinator {
         boolean executeIfOwner(BooleanSupplier writeAction);
+
+        default boolean isStillOwner() {
+            return executeIfOwner(() -> true);
+        }
+
+        default void onAppliedWrite(Runnable rollbackAction) {
+            // Optional hook for coordinators that reconcile applied writes if canceled before publication.
+        }
     }
 
     TunnelMode getMode();

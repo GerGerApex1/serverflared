@@ -4,7 +4,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Map;
+import java.util.WeakHashMap;
 import me.gergerapex1.serverflared.Constants;
 import me.gergerapex1.serverflared.ModPlatformInstance;
 import me.gergerapex1.serverflared.cloudflared.handler.TunnelMode;
@@ -15,6 +18,7 @@ public class ConfigManager {
     public boolean firstTime = false;
     private final YamlHandler handler = new YamlHandler();
     private final Path customConfigPath;
+    private final Map<Config, String> configRevisions = new WeakHashMap<>();
     public Config CONFIG;
 
     public ConfigManager() {
@@ -28,22 +32,39 @@ public class ConfigManager {
             if (ensureConfigFileExists(configFilePath)) {
                 firstTime = true;
                 CONFIG = new Config();
+                recordRevision(CONFIG, computeRevision(configFilePath));
                 return;
             }
             migrateConfigFile(configFilePath);
 
+            if (isFileEmpty(configFilePath)) {
+                Constants.LOG.warn("Config is empty, replacing with default");
+                replaceWithDefault(configFilePath);
+                return;
+            }
+
+            byte[] rawBytes = Files.readAllBytes(configFilePath);
+            String revision = sha256Hex(rawBytes);
+            Config loaded;
             try {
-                CONFIG = handler.readFromYaml(configFilePath.toString(), Config.class);
+                loaded = handler.readFromYamlBytes(rawBytes, Config.class);
             } catch (Exception e) {
                 Constants.LOG.warn("Failed to parse config, replacing with default ({})", e.getClass().getSimpleName());
                 replaceWithDefault(configFilePath);
                 return;
             }
 
-            if (!isConfigValid(CONFIG) || isFileEmpty(configFilePath)) {
-                Constants.LOG.warn("Config is empty or contains invalid values, replacing with default");
-                replaceWithDefault(configFilePath);
+            if (!isConfigValid(loaded)) {
+                Constants.LOG.warn(
+                    "Config contains invalid values; preserving existing config.yml untouched and using safe defaults in memory."
+                );
+                CONFIG = new Config();
+                firstTime = true;
+                return;
             }
+
+            CONFIG = loaded;
+            recordRevision(CONFIG, revision);
         } catch (IOException e) {
             Constants.LOG.error("Failed to load config ({})", e.getClass().getSimpleName());
         }
@@ -87,6 +108,16 @@ public class ConfigManager {
         if (!data.containsKey("tunnelMode")) {
             data.put("tunnelMode", TunnelMode.LOCAL.name());
             migrated = true;
+        } else {
+            Object rawTunnelMode = data.get("tunnelMode");
+            String rawStr = rawTunnelMode != null ? String.valueOf(rawTunnelMode).trim() : "";
+            if (!rawStr.isEmpty() && !TunnelMode.isValid(rawStr)) {
+                Constants.LOG.warn(
+                    "Invalid tunnelMode '{}' in config.yml; skipping migration to preserve existing config.yml.",
+                    rawStr
+                );
+                return;
+            }
         }
 
         if (!data.containsKey("remote")) {
@@ -110,11 +141,18 @@ public class ConfigManager {
         try {
             ensureConfigFileExists(configFilePath);
             migrateConfigFile(configFilePath);
-            Config reloaded = handler.readFromYaml(configFilePath.toString(), Config.class);
-            if (!isConfigValid(reloaded) || isFileEmpty(configFilePath)) {
+            if (isFileEmpty(configFilePath)) {
                 Constants.LOG.warn("Reloaded config is empty or contains invalid values.");
                 return null;
             }
+            byte[] rawBytes = Files.readAllBytes(configFilePath);
+            String revision = sha256Hex(rawBytes);
+            Config reloaded = handler.readFromYamlBytes(rawBytes, Config.class);
+            if (!isConfigValid(reloaded)) {
+                Constants.LOG.warn("Reloaded config is empty or contains invalid values.");
+                return null;
+            }
+            recordRevision(reloaded, revision);
             return reloaded;
         } catch (Exception e) {
             Constants.LOG.error("Failed to reload config ({})", e.getClass().getSimpleName());
@@ -161,8 +199,77 @@ public class ConfigManager {
         Path configFilePath = getConfigFilePath();
         try {
             handler.writeToYaml(configFilePath.toString(), CONFIG);
+            recordRevision(CONFIG, computeRevision(configFilePath));
         } catch (IOException e) {
             Constants.LOG.error("Failed to save config: {}", e.getMessage());
+        }
+    }
+
+    public synchronized boolean updateTunnelIdentityIfUnchanged(Config targetConfig, String tunnelId, String tunnelName) {
+        if (targetConfig == null || this.CONFIG != targetConfig) {
+            return false;
+        }
+        boolean idChanged = tunnelId != null && !tunnelId.isEmpty() && !tunnelId.equals(targetConfig.getTunnelId());
+        boolean nameChanged = tunnelName != null && !tunnelName.isEmpty() && !tunnelName.equals(targetConfig.getTunnelName());
+        if (!idChanged && !nameChanged) {
+            return false;
+        }
+
+        String expectedRevision = configRevisions.get(targetConfig);
+        Path configFilePath = getConfigFilePath();
+        String currentRevision = computeRevision(configFilePath);
+        if (expectedRevision == null || currentRevision == null || !expectedRevision.equals(currentRevision)) {
+            Constants.LOG.warn(
+                "Skipping automatic config.yml tunnel identity update because config.yml was modified on disk after it was loaded; preserving newer edits."
+            );
+            return false;
+        }
+
+        if (idChanged) {
+            targetConfig.setTunnelId(tunnelId);
+        }
+        if (nameChanged) {
+            targetConfig.setTunnelName(tunnelName);
+        }
+        try {
+            handler.writeToYaml(configFilePath.toString(), targetConfig);
+            recordRevision(targetConfig, computeRevision(configFilePath));
+            return true;
+        } catch (IOException e) {
+            Constants.LOG.error("Failed to save config: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    private void recordRevision(Config config, String revision) {
+        if (config != null && revision != null) {
+            configRevisions.put(config, revision);
+        }
+    }
+
+    private static String computeRevision(Path path) {
+        try {
+            if (path == null || Files.notExists(path)) {
+                return null;
+            }
+            return sha256Hex(Files.readAllBytes(path));
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private static String sha256Hex(byte[] bytes) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(bytes != null ? bytes : new byte[0]);
+            StringBuilder sb = new StringBuilder(hash.length * 2);
+            for (byte b : hash) {
+                sb.append(Character.forDigit((b >>> 4) & 0xF, 16));
+                sb.append(Character.forDigit(b & 0xF, 16));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not supported", e);
         }
     }
 
@@ -202,6 +309,7 @@ public class ConfigManager {
             handler.writeToYaml(configFilePath.toString(), defaultConfig);
             CONFIG = defaultConfig;
             firstTime = true;
+            recordRevision(defaultConfig, computeRevision(configFilePath));
         } catch (IOException e) {
             Constants.LOG.error("Failed to write default config: {}", e.getMessage());
         }
