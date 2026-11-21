@@ -31,7 +31,7 @@ public class ConfigManager {
             try {
                 CONFIG = handler.readFromYaml(configFilePath.toString(), Config.class);
             } catch (Exception e) {
-                Constants.LOG.warn("Failed to parse config, replacing with default: {}", e.getMessage());
+                Constants.LOG.warn("Failed to parse config, replacing with default ({})", e.getClass().getSimpleName());
                 replaceWithDefault(configFilePath);
                 return;
             }
@@ -41,7 +41,7 @@ public class ConfigManager {
                 replaceWithDefault(configFilePath);
             }
         } catch (IOException e) {
-            Constants.LOG.error("Failed to load config: {}", e.getMessage());
+            Constants.LOG.error("Failed to load config ({})", e.getClass().getSimpleName());
         }
     }
 
@@ -101,7 +101,7 @@ public class ConfigManager {
         }
     }
 
-    public synchronized boolean reload() {
+    public synchronized Config loadCandidateConfig() {
         Path configFilePath = getConfigFilePath();
         try {
             createConfigFileIfNotExist(configFilePath);
@@ -109,15 +109,30 @@ public class ConfigManager {
             Config reloaded = handler.readFromYaml(configFilePath.toString(), Config.class);
             if (!isConfigValid(reloaded) || isFileEmpty(configFilePath)) {
                 Constants.LOG.warn("Reloaded config is empty or contains invalid values.");
-                return false;
+                return null;
             }
-            this.CONFIG = reloaded;
-            this.firstTime = isPendingFirstTimeSetup(reloaded);
-            return true;
+            return reloaded;
         } catch (Exception e) {
-            Constants.LOG.error("Failed to reload config: {}", e.getMessage());
+            Constants.LOG.error("Failed to reload config ({})", e.getClass().getSimpleName());
+            return null;
+        }
+    }
+
+    public synchronized void applyConfig(Config config) {
+        if (config == null) {
+            return;
+        }
+        this.CONFIG = config;
+        this.firstTime = isPendingFirstTimeSetup(config);
+    }
+
+    public synchronized boolean reload() {
+        Config candidate = loadCandidateConfig();
+        if (candidate == null) {
             return false;
         }
+        applyConfig(candidate);
+        return true;
     }
 
     public static boolean isPendingFirstTimeSetup(Config config) {
