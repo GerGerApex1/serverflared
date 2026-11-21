@@ -7,8 +7,10 @@ import java.util.List;
 import java.util.Locale;
 import me.gergerapex1.serverflared.ServerFlared;
 import me.gergerapex1.serverflared.cloudflared.handler.CloudFlaredHandler;
-import me.gergerapex1.serverflared.cloudflared.handler.LocalManagedTunnel;
+import me.gergerapex1.serverflared.cloudflared.handler.ManagedTunnel;
 import me.gergerapex1.serverflared.cloudflared.handler.TunnelInfo;
+import me.gergerapex1.serverflared.cloudflared.handler.TunnelMode;
+import me.gergerapex1.serverflared.cloudflared.handler.TunnelState;
 import me.gergerapex1.serverflared.utils.config.Config;
 import me.gergerapex1.serverflared.utils.config.ConfigManager;
 
@@ -107,20 +109,35 @@ public final class ServerFlaredCommand {
     }
 
     private static void handleStatus(CommandSenderAdapter sender) {
-        LocalManagedTunnel localHandler = ServerFlared.getLocalHandler();
+        ManagedTunnel activeTunnel = ServerFlared.getActiveTunnel();
         CloudFlaredHandler cfHandler = ServerFlared.getHandler();
         ConfigManager cfgManager = ServerFlared.getConfigManager();
         Config cfg = cfgManager != null ? cfgManager.CONFIG : null;
         TunnelInfo tunnelInfo = ServerFlared.getTunnelInfo();
 
-        LocalManagedTunnel.TunnelState state = localHandler != null
-            ? localHandler.getState()
-            : LocalManagedTunnel.TunnelState.STOPPED;
+        TunnelMode mode = activeTunnel != null
+            ? activeTunnel.getMode()
+            : (cfg != null ? cfg.getResolvedTunnelMode() : TunnelMode.LOCAL);
 
-        long pid = localHandler != null ? localHandler.getActivePid() : -1L;
-        long uptimeMillis = localHandler != null ? localHandler.getUptimeMillis() : 0L;
-        String connectionDetail = localHandler != null ? localHandler.getLastConnectionDetail() : "Not initialized";
-        boolean authenticated = cfHandler != null && cfHandler.isAuthenticated();
+        TunnelState state = activeTunnel != null
+            ? activeTunnel.getState()
+            : TunnelState.STOPPED;
+
+        long pid = activeTunnel != null ? activeTunnel.getActivePid() : -1L;
+        long uptimeMillis = activeTunnel != null ? activeTunnel.getUptimeMillis() : 0L;
+        String connectionDetail = activeTunnel != null ? activeTunnel.getLastConnectionDetail() : "Not initialized";
+
+        String authStatus;
+        if (mode == TunnelMode.REMOTE_TOKEN) {
+            boolean hasToken = cfg != null && !cfg.getRemote().resolveTunnelToken().isEmpty();
+            authStatus = hasToken ? "\u00A7aTunnel Token (Configured)" : "\u00A7cTunnel Token (Missing)";
+        } else if (mode == TunnelMode.REMOTE_API) {
+            boolean hasApiToken = cfg != null && !cfg.getRemote().resolveApiToken().isEmpty();
+            authStatus = hasApiToken ? "\u00A7aAPI Token (Configured)" : "\u00A7cAPI Token (Missing)";
+        } else {
+            boolean authenticated = cfHandler != null && cfHandler.isAuthenticated();
+            authStatus = authenticated ? "\u00A7aYes (cert.pem)" : "\u00A7cNo (cert.pem missing)";
+        }
 
         String tunnelName = (tunnelInfo != null && tunnelInfo.getName() != null && !tunnelInfo.getName().isEmpty())
             ? tunnelInfo.getName()
@@ -150,7 +167,8 @@ public final class ServerFlaredCommand {
 
         sender.sendMessage("\u00A78\u00A7m----------------\u00A7r \u00A76\u00A7lServerFlared Status \u00A78\u00A7m----------------");
         sender.sendMessage("\u00A77State: " + stateColor + state.name());
-        sender.sendMessage("\u00A77Authenticated: " + (authenticated ? "\u00A7aYes" : "\u00A7cNo"));
+        sender.sendMessage("\u00A77Mode: \u00A7f" + mode.name());
+        sender.sendMessage("\u00A77Auth: " + authStatus);
         sender.sendMessage("\u00A77PID: \u00A7f" + (pid > 0 ? String.valueOf(pid) : "N/A"));
         sender.sendMessage("\u00A77Uptime: \u00A7f" + formatDuration(uptimeMillis));
         sender.sendMessage("\u00A77Tunnel Name: \u00A7f" + tunnelName + " \u00A78(" + tunnelId + ")");
