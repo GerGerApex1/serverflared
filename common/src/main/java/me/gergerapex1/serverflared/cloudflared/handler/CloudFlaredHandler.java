@@ -25,9 +25,13 @@ import me.gergerapex1.serverflared.process.SubCommand;
 public class CloudFlaredHandler {
     private final String binaryPath;
     private final ProcessHandler processHandler;
+    private final AtomicReference<Process> activeAuthProcess = new AtomicReference<>(null);
+    private final AtomicReference<CompletableFuture<Boolean>> activeAuthFuture = new AtomicReference<>(null);
     private static final Pattern URL_REGEX = Pattern.compile("^((https?|ftp)://|(www|ftp)\\.)?[a-z0-9-]+(\\.[a-z0-9-]+)+([/?].*)?$");
     // private static final Pattern TUNNEL_INFO_REGEX = Pattern.compile("^(?:NAME:\\s+([A-Za-z0-9_-]+)|ID:\\s+([0-9a-fA-F-]+)|CREATED:\\s+([\\dT:\\-Z]+))$\n");
     private static final Pattern TUNNEL_INFO_REGEX = Pattern.compile("^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\\s+(.+?)\\s+(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z)(?:\\s+(.*))?$");
+    private static final Pattern EXACT_UUID_REGEX = Pattern.compile(
+        "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
 
     public CloudFlaredHandler(String binaryPath) {
         this.processHandler = new ProcessHandler(binaryPath);
@@ -245,6 +249,12 @@ public class CloudFlaredHandler {
 				result.complete(false);
 				return result;
 			}
+			activeAuthProcess.set(process);
+			activeAuthFuture.set(result);
+			if (isStillAllowed != null && !isStillAllowed.getAsBoolean()) {
+				cancelAuthentication();
+				return result;
+			}
 
 			Thread authShutdownHook = new Thread(() -> {
 				try {
@@ -267,7 +277,8 @@ public class CloudFlaredHandler {
 			CompletableFuture.runAsync(() -> {
 				try {
 					int exit = process.waitFor();
-					result.complete(exit == 0);
+					boolean allowed = (isStillAllowed == null || isStillAllowed.getAsBoolean());
+					result.complete(exit == 0 && allowed);
 				} catch (InterruptedException e) {
 					Thread.currentThread().interrupt();
 					if (process.isAlive()) {
@@ -275,6 +286,8 @@ public class CloudFlaredHandler {
 					}
 					result.complete(false);
 				} finally {
+					activeAuthProcess.compareAndSet(process, null);
+					activeAuthFuture.compareAndSet(result, null);
 					try {
 						Runtime.getRuntime().removeShutdownHook(authShutdownHook);
 					} catch (IllegalStateException ignored) {
@@ -448,17 +461,19 @@ public class CloudFlaredHandler {
         if (tunnelIdOrName == null || tunnelIdOrName.trim().isEmpty()) {
             return null;
         }
+        final String query = tunnelIdOrName.trim();
+        final String filterFlag = EXACT_UUID_REGEX.matcher(query).matches() ? "--id" : "--name";
         AtomicReference<TunnelInfo> info = new AtomicReference<>(null);
         Process process = processHandler.run(
-            new SubCommand(Constants.CMD_TUNNEL, Constants.CMD_LIST),
+            new SubCommand(Constants.CMD_TUNNEL, Constants.CMD_LIST, filterFlag, query),
             line -> {
                 Matcher matcher = TUNNEL_INFO_REGEX.matcher(line.trim());
                 if (isTunnelNotFound(line)) {
-                    tunnelNotFound(tunnelIdOrName);
+                    tunnelNotFound(query);
                     info.set(null);
                 }
                 if (matcher.find()) {
-                    if (matcher.group(1).equals(tunnelIdOrName) || matcher.group(2).equals(tunnelIdOrName)) {
+                    if (matcher.group(1).equals(query) || matcher.group(2).equals(query)) {
                         TunnelInfo tunnelInfo = new TunnelInfo();
                         tunnelInfo.setId(matcher.group(1));
                         tunnelInfo.setName(matcher.group(2));
@@ -487,7 +502,32 @@ public class CloudFlaredHandler {
     public void tunnelNotFound(String tunnelIdOrName) {
         Constants.LOG.debug("Tunnel with ID or Name '{}' not found", tunnelIdOrName);
     }
+	public void cancelAuthentication() {
+		Process proc = activeAuthProcess.getAndSet(null);
+		CompletableFuture<Boolean> future = activeAuthFuture.getAndSet(null);
+		if (proc != null) {
+			try {
+				if (proc.isAlive()) {
+					proc.destroy();
+					if (!proc.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)) {
+						proc.destroyForcibly();
+						proc.waitFor(2, java.util.concurrent.TimeUnit.SECONDS);
+					}
+				}
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				proc.destroyForcibly();
+			} catch (Exception e) {
+				Constants.LOG.debug("Failed to cancel cloudflared auth process", e);
+			}
+		}
+		if (future != null) {
+			future.complete(false);
+		}
+	}
+
 	public void terminateProcesses() {
+		cancelAuthentication();
 		processHandler.terminate();
 	}
 }

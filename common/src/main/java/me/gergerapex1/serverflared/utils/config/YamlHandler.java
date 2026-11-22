@@ -9,8 +9,11 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -48,15 +51,46 @@ public class YamlHandler {
         }
     }
     public <T> void writeToYaml(String filePath, T object) throws IOException {
-        try (BufferedWriter writer = Files.newBufferedWriter(Paths.get(filePath), StandardCharsets.UTF_8)) {
+        byte[] bytes = renderToYamlBytes(object);
+        writeBytesAtomically(Paths.get(filePath), bytes);
+    }
 
-            Map<String, String> commentsByPath = new LinkedHashMap<>();
-            collectComments(object, "", commentsByPath);
-
-            String yamlString = yamlMapper.writerWithDefaultPrettyPrinter().writeValueAsString(object);
-            String yamlWithComments = insertCommentsIntoYaml(yamlString, commentsByPath);
-            writer.write(yamlWithComments);
+    public static void writeBytesAtomically(Path targetPath, byte[] bytes) throws IOException {
+        Path absoluteTarget = targetPath.toAbsolutePath();
+        Path parent = absoluteTarget.getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
         }
+        String prefix = absoluteTarget.getFileName().toString() + ".";
+        Path stagedFile = (parent != null)
+            ? Files.createTempFile(parent, prefix, ".tmp")
+            : Files.createTempFile(prefix, ".tmp");
+        boolean moved = false;
+        try {
+            Files.write(stagedFile, bytes);
+            try {
+                Files.move(stagedFile, absoluteTarget, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(stagedFile, absoluteTarget, StandardCopyOption.REPLACE_EXISTING);
+            }
+            moved = true;
+        } finally {
+            if (!moved) {
+                try {
+                    Files.deleteIfExists(stagedFile);
+                } catch (IOException ignored) {
+                }
+            }
+        }
+    }
+
+    public <T> byte[] renderToYamlBytes(T object) throws IOException {
+        Map<String, String> commentsByPath = new LinkedHashMap<>();
+        collectComments(object, "", commentsByPath);
+
+        String yamlString = yamlMapper.writerWithDefaultPrettyPrinter().writeValueAsString(object);
+        String yamlWithComments = insertCommentsIntoYaml(yamlString, commentsByPath);
+        return yamlWithComments.getBytes(StandardCharsets.UTF_8);
     }
     public <T> void overwriteFileWithYaml(String filePath, T object) throws IOException {
         try (BufferedWriter writer = Files.newBufferedWriter(Paths.get(filePath), StandardCharsets.UTF_8,

@@ -1,12 +1,15 @@
 package me.gergerapex1.serverflared.utils.config;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.WeakHashMap;
 import me.gergerapex1.serverflared.Constants;
 import me.gergerapex1.serverflared.ModPlatformInstance;
@@ -14,6 +17,8 @@ import me.gergerapex1.serverflared.cloudflared.handler.TunnelMode;
 
 public class ConfigManager {
     public static final String DEFAULT_HOST_PLACEHOLDER = "minecraftsubdomain.yourdomain.net";
+    public static final String TUNNEL_STATE_FILENAME = "tunnel-state.yml";
+    private static final String ZERO_UUID = new UUID(0, 0).toString();
 
     public boolean firstTime = false;
     private final YamlHandler handler = new YamlHandler();
@@ -29,30 +34,33 @@ public class ConfigManager {
         this.customConfigPath = customConfigPath;
         Path configFilePath = getConfigFilePath();
         try {
-            if (ensureConfigFileExists(configFilePath)) {
+            byte[] createdDefaultBytes = ensureConfigFileExists(configFilePath);
+            if (createdDefaultBytes != null) {
                 firstTime = true;
                 CONFIG = new Config();
-                recordRevision(CONFIG, computeRevision(configFilePath));
+                recordRevision(CONFIG, sha256Hex(createdDefaultBytes));
                 return;
             }
-            migrateConfigFile(configFilePath);
 
-            if (isFileEmpty(configFilePath)) {
+            // Read bytes first so filesystem I/O errors are never mistaken for empty/malformed YAML.
+            byte[] rawBytes = Files.readAllBytes(configFilePath);
+            if (rawBytes.length == 0) {
                 Constants.LOG.warn("Config is empty, replacing with default");
                 replaceWithDefault(configFilePath);
                 return;
             }
 
-            byte[] rawBytes = Files.readAllBytes(configFilePath);
-            String revision = sha256Hex(rawBytes);
+            byte[] effectiveBytes;
             Config loaded;
             try {
-                loaded = handler.readFromYamlBytes(rawBytes, Config.class);
-            } catch (Exception e) {
+                effectiveBytes = migrateConfigFile(configFilePath, rawBytes);
+                loaded = handler.readFromYamlBytes(effectiveBytes, Config.class);
+            } catch (JsonProcessingException | RuntimeException e) {
                 Constants.LOG.warn("Failed to parse config, replacing with default ({})", e.getClass().getSimpleName());
                 replaceWithDefault(configFilePath);
                 return;
             }
+            String revision = sha256Hex(effectiveBytes);
 
             if (!isConfigValid(loaded)) {
                 Constants.LOG.warn(
@@ -63,18 +71,23 @@ public class ConfigManager {
                 return;
             }
 
+            applyPersistedTunnelIdentity(loaded, getTunnelStateFilePath(configFilePath));
             CONFIG = loaded;
             recordRevision(CONFIG, revision);
         } catch (IOException e) {
             Constants.LOG.error("Failed to load config ({})", e.getClass().getSimpleName());
+            if (CONFIG == null) {
+                CONFIG = new Config();
+                firstTime = true;
+            }
         }
     }
 
     @SuppressWarnings("unchecked")
-    private void migrateConfigFile(Path configFilePath) throws IOException {
-        Map<String, Object> data = handler.readFromYaml(configFilePath.toString(), Map.class);
+    private byte[] migrateConfigFile(Path configFilePath, byte[] rawBytes) throws IOException {
+        Map<String, Object> data = handler.readFromYamlBytes(rawBytes, Map.class);
         if (data == null) {
-            return;
+            return rawBytes;
         }
 
         boolean migrated = false;
@@ -116,7 +129,7 @@ public class ConfigManager {
                     "Invalid tunnelMode '{}' in config.yml; skipping migration to preserve existing config.yml.",
                     rawStr
                 );
-                return;
+                return rawBytes;
             }
         }
 
@@ -126,32 +139,36 @@ public class ConfigManager {
 
         if (migrated) {
             // Rewrite file with migrated keys AND regenerated comments
-            Config tempConfig = handler.readFromYaml(configFilePath.toString(), Config.class);
+            Config tempConfig = handler.readFromYamlBytes(rawBytes, Config.class);
             if (tempConfig != null) {
                 tempConfig.setVersion(Config.CURRENT_VERSION);
                 tempConfig.getRemote(); // ensure non-null for comment generation
-                handler.writeToYaml(configFilePath.toString(), tempConfig);
+                byte[] migratedBytes = handler.renderToYamlBytes(tempConfig);
+                YamlHandler.writeBytesAtomically(configFilePath, migratedBytes);
                 Constants.LOG.debug("Config migrated to version {} and comments regenerated", Config.CURRENT_VERSION);
+                return migratedBytes;
             }
         }
+        return rawBytes;
     }
 
     public synchronized Config loadCandidateConfig() {
         Path configFilePath = getConfigFilePath();
         try {
             ensureConfigFileExists(configFilePath);
-            migrateConfigFile(configFilePath);
-            if (isFileEmpty(configFilePath)) {
+            byte[] rawBytes = Files.readAllBytes(configFilePath);
+            if (rawBytes.length == 0) {
                 Constants.LOG.warn("Reloaded config is empty or contains invalid values.");
                 return null;
             }
-            byte[] rawBytes = Files.readAllBytes(configFilePath);
-            String revision = sha256Hex(rawBytes);
-            Config reloaded = handler.readFromYamlBytes(rawBytes, Config.class);
+            byte[] effectiveBytes = migrateConfigFile(configFilePath, rawBytes);
+            String revision = sha256Hex(effectiveBytes);
+            Config reloaded = handler.readFromYamlBytes(effectiveBytes, Config.class);
             if (!isConfigValid(reloaded)) {
                 Constants.LOG.warn("Reloaded config is empty or contains invalid values.");
                 return null;
             }
+            applyPersistedTunnelIdentity(reloaded, getTunnelStateFilePath(configFilePath));
             recordRevision(reloaded, revision);
             return reloaded;
         } catch (Exception e) {
@@ -198,8 +215,9 @@ public class ConfigManager {
     public synchronized void saveConfig() {
         Path configFilePath = getConfigFilePath();
         try {
-            handler.writeToYaml(configFilePath.toString(), CONFIG);
-            recordRevision(CONFIG, computeRevision(configFilePath));
+            byte[] writtenBytes = handler.renderToYamlBytes(CONFIG);
+            YamlHandler.writeBytesAtomically(configFilePath, writtenBytes);
+            recordRevision(CONFIG, sha256Hex(writtenBytes));
         } catch (IOException e) {
             Constants.LOG.error("Failed to save config: {}", e.getMessage());
         }
@@ -215,46 +233,72 @@ public class ConfigManager {
             return false;
         }
 
-        String expectedRevision = configRevisions.get(targetConfig);
-        Path configFilePath = getConfigFilePath();
-        String currentRevision = computeRevision(configFilePath);
-        if (expectedRevision == null || currentRevision == null || !expectedRevision.equals(currentRevision)) {
-            Constants.LOG.warn(
-                "Skipping automatic config.yml tunnel identity update because config.yml was modified on disk after it was loaded; preserving newer edits."
-            );
-            return false;
-        }
+        // Persist automatic tunnel identity in a dedicated state file so operator-edited config.yml is never overwritten.
+        Path stateFilePath = getTunnelStateFilePath(getConfigFilePath());
+        String persistedId = idChanged ? tunnelId : targetConfig.getTunnelId();
+        String persistedName = nameChanged ? tunnelName : targetConfig.getTunnelName();
+        String persistedMode = targetConfig.getResolvedTunnelMode().name();
 
-        if (idChanged) {
-            targetConfig.setTunnelId(tunnelId);
-        }
-        if (nameChanged) {
-            targetConfig.setTunnelName(tunnelName);
-        }
+        Map<String, String> stateData = new LinkedHashMap<>();
+        stateData.put("tunnelMode", persistedMode);
+        stateData.put("tunnelName", persistedName != null ? persistedName : "");
+        stateData.put("tunnelId", persistedId != null ? persistedId : "");
         try {
-            handler.writeToYaml(configFilePath.toString(), targetConfig);
-            recordRevision(targetConfig, computeRevision(configFilePath));
+            byte[] stateBytes = handler.renderToYamlBytes(stateData);
+            YamlHandler.writeBytesAtomically(stateFilePath, stateBytes);
+            if (idChanged) {
+                targetConfig.setTunnelId(tunnelId);
+            }
+            if (nameChanged) {
+                targetConfig.setTunnelName(tunnelName);
+            }
             return true;
         } catch (IOException e) {
-            Constants.LOG.error("Failed to save config: {}", e.getMessage());
+            Constants.LOG.error("Failed to save tunnel identity state: {}", e.getMessage());
             return false;
+        }
+    }
+
+    private static Path getTunnelStateFilePath(Path configFilePath) {
+        return configFilePath.resolveSibling(TUNNEL_STATE_FILENAME);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void applyPersistedTunnelIdentity(Config config, Path stateFilePath) {
+        if (config == null || stateFilePath == null || Files.notExists(stateFilePath)) {
+            return;
+        }
+        String configuredId = config.getTunnelId();
+        if (configuredId != null && !configuredId.trim().isEmpty() && !ZERO_UUID.equals(configuredId.trim())) {
+            return;
+        }
+        try {
+            Map<String, Object> stateData = handler.readFromYaml(stateFilePath.toString(), Map.class);
+            if (stateData == null) {
+                return;
+            }
+            String savedMode = stateData.get("tunnelMode") != null ? String.valueOf(stateData.get("tunnelMode")).trim() : "";
+            String savedName = stateData.get("tunnelName") != null ? String.valueOf(stateData.get("tunnelName")).trim() : "";
+            String savedId = stateData.get("tunnelId") != null ? String.valueOf(stateData.get("tunnelId")).trim() : "";
+            if (savedId.isEmpty() || ZERO_UUID.equals(savedId)) {
+                return;
+            }
+            if (!savedMode.isEmpty() && !savedMode.equalsIgnoreCase(config.getResolvedTunnelMode().name())) {
+                return;
+            }
+            String configuredName = config.getTunnelName() != null ? config.getTunnelName().trim() : "";
+            if (!savedName.isEmpty() && !configuredName.isEmpty() && !savedName.equals(configuredName)) {
+                return;
+            }
+            config.setTunnelId(savedId);
+        } catch (Exception e) {
+            Constants.LOG.debug("Ignoring unreadable tunnel state file ({})", e.getClass().getSimpleName());
         }
     }
 
     private void recordRevision(Config config, String revision) {
         if (config != null && revision != null) {
             configRevisions.put(config, revision);
-        }
-    }
-
-    private static String computeRevision(Path path) {
-        try {
-            if (path == null || Files.notExists(path)) {
-                return null;
-            }
-            return sha256Hex(Files.readAllBytes(path));
-        } catch (IOException e) {
-            return null;
         }
     }
 
@@ -281,35 +325,28 @@ public class ConfigManager {
             Constants.CONFIG_DIR, "config.yml");
     }
 
-    private boolean ensureConfigFileExists(Path configFilePath) throws IOException {
+    private byte[] ensureConfigFileExists(Path configFilePath) throws IOException {
         Path parent = configFilePath.getParent();
         if (parent != null) {
             Files.createDirectories(parent);
         }
         if (Files.notExists(configFilePath)) {
-            Files.createFile(configFilePath);
             Config defaultConfig = new Config();
-            handler.writeToYaml(configFilePath.toString(), defaultConfig);
-            return true;
+            byte[] defaultBytes = handler.renderToYamlBytes(defaultConfig);
+            YamlHandler.writeBytesAtomically(configFilePath, defaultBytes);
+            return defaultBytes;
         }
-        return false;
-    }
-
-    private boolean isFileEmpty(Path path) {
-        try {
-            return Files.size(path) == 0;
-        } catch (IOException e) {
-            return true;
-        }
+        return null;
     }
 
     private void replaceWithDefault(Path configFilePath) {
         try {
             Config defaultConfig = new Config();
-            handler.writeToYaml(configFilePath.toString(), defaultConfig);
+            byte[] defaultBytes = handler.renderToYamlBytes(defaultConfig);
+            YamlHandler.writeBytesAtomically(configFilePath, defaultBytes);
             CONFIG = defaultConfig;
             firstTime = true;
-            recordRevision(defaultConfig, computeRevision(configFilePath));
+            recordRevision(defaultConfig, sha256Hex(defaultBytes));
         } catch (IOException e) {
             Constants.LOG.error("Failed to write default config: {}", e.getMessage());
         }

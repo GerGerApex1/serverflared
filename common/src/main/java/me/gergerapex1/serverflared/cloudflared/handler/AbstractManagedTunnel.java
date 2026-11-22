@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import me.gergerapex1.serverflared.Constants;
@@ -18,11 +20,14 @@ public abstract class AbstractManagedTunnel implements ManagedTunnel {
     protected final ProcessHandler executor;
     protected final CloudFlaredHandler cfHandler;
 
+    private final Object edgeConnectionLock = new Object();
     protected volatile TunnelState state = TunnelState.STOPPED;
     protected volatile Process activeTunnelProcess;
     protected volatile long startedAtMillis = 0L;
     protected volatile String lastConnectionDetail = "Not connected";
     protected volatile boolean stoppingIntentionally = false;
+    protected volatile boolean edgeConnected = false;
+    protected volatile boolean processExited = false;
 
     protected AbstractManagedTunnel(CloudFlaredHandler cloudflaredHandler) {
         this(cloudflaredHandler, new ProcessHandler(
@@ -49,6 +54,8 @@ public abstract class AbstractManagedTunnel implements ManagedTunnel {
             return false;
         }
         stoppingIntentionally = false;
+        edgeConnected = false;
+        processExited = false;
         state = TunnelState.STARTING;
         startedAtMillis = System.currentTimeMillis();
         lastConnectionDetail = "Starting cloudflared tunnel process...";
@@ -75,6 +82,11 @@ public abstract class AbstractManagedTunnel implements ManagedTunnel {
                         }
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
+                    } finally {
+                        processExited = true;
+                        synchronized (edgeConnectionLock) {
+                            edgeConnectionLock.notifyAll();
+                        }
                     }
                 });
                 return true;
@@ -116,8 +128,40 @@ public abstract class AbstractManagedTunnel implements ManagedTunnel {
                 detail.append(": ").append(trimmed);
             }
             lastConnectionDetail = detail.toString();
+            edgeConnected = true;
+            synchronized (edgeConnectionLock) {
+                edgeConnectionLock.notifyAll();
+            }
         } else if (lower.contains("err ") || lower.contains("error") || lower.contains("failed")) {
             lastConnectionDetail = trimmed;
+        }
+    }
+
+    @Override
+    public boolean awaitEdgeConnection(long timeoutMillis, BooleanSupplier isStillAllowed) {
+        long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(Math.max(0L, timeoutMillis));
+        synchronized (edgeConnectionLock) {
+            while (true) {
+                if (isStillAllowed != null && !isStillAllowed.getAsBoolean()) {
+                    return false;
+                }
+                if (edgeConnected) {
+                    return isTunnelRunning();
+                }
+                if (processExited || !isTunnelRunning()) {
+                    return false;
+                }
+                long remainingMs = TimeUnit.NANOSECONDS.toMillis(deadlineNanos - System.nanoTime());
+                if (remainingMs <= 0L) {
+                    return false;
+                }
+                try {
+                    edgeConnectionLock.wait(Math.min(remainingMs, 100L));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+            }
         }
     }
 
@@ -157,6 +201,11 @@ public abstract class AbstractManagedTunnel implements ManagedTunnel {
         stoppingIntentionally = true;
         executor.terminate();
         activeTunnelProcess = null;
+        edgeConnected = false;
+        processExited = true;
+        synchronized (edgeConnectionLock) {
+            edgeConnectionLock.notifyAll();
+        }
         state = TunnelState.STOPPED;
         startedAtMillis = 0L;
         lastConnectionDetail = "Stopped";

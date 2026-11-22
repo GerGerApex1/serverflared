@@ -14,6 +14,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.HttpURLConnection;
+import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLEncoder;
@@ -21,6 +22,11 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 import me.gergerapex1.serverflared.Constants;
 
 /**
@@ -294,6 +300,17 @@ public class CloudflareApiClient {
         String serviceUrl,
         JsonNode existingConfig
     ) throws CloudflareApiException {
+        return updateTunnelIngress(accountId, tunnelId, hostName, serviceUrl, existingConfig, null);
+    }
+
+    public IngressUpdateReceipt updateTunnelIngress(
+        String accountId,
+        String tunnelId,
+        String hostName,
+        String serviceUrl,
+        JsonNode existingConfig,
+        AtomicReference<IngressUpdateReceipt> plannedReceiptOut
+    ) throws CloudflareApiException {
         String normalizedTarget = normalizeHost(hostName);
         if (normalizedTarget.isEmpty()) {
             throw new CloudflareApiException("Cannot update tunnel ingress: hostName is empty.");
@@ -398,13 +415,48 @@ public class CloudflareApiClient {
         ObjectNode root = objectMapper.createObjectNode();
         root.set("config", mergedConfig);
 
+        IngressUpdateReceipt receipt = new IngressUpdateReceipt(
+            hostName.trim(), !updatedExistingRule, appliedRule, previousRule
+        );
+        if (plannedReceiptOut != null) {
+            plannedReceiptOut.set(receipt);
+        }
+
         request(
             "PUT",
             "/accounts/" + urlEncode(accountId) + "/cfd_tunnel/" + urlEncode(tunnelId) + "/configurations",
             root
         );
 
-        return new IngressUpdateReceipt(hostName.trim(), !updatedExistingRule, appliedRule, previousRule);
+        return receipt;
+    }
+
+    public boolean isIngressReceiptLive(String accountId, String tunnelId, IngressUpdateReceipt receipt)
+        throws CloudflareApiException {
+        if (receipt == null || receipt.getAppliedRule() == null) {
+            return false;
+        }
+        JsonNode currentConfig = getTunnelConfiguration(accountId, tunnelId);
+        if (currentConfig == null || !currentConfig.isObject() || !currentConfig.path("ingress").isArray()) {
+            return false;
+        }
+        String normalizedTarget = normalizeHost(receipt.getHostName());
+        JsonNode currentIngress = currentConfig.get("ingress");
+        JsonNode singleMatch = null;
+        int matchCount = 0;
+        for (int i = 0; i < currentIngress.size(); i++) {
+            JsonNode ruleNode = currentIngress.get(i);
+            if (ruleNode == null || !ruleNode.isObject()) {
+                continue;
+            }
+            String ruleHost = ruleNode.path("hostname").asText("").trim();
+            String rulePath = ruleNode.path("path").asText("").trim();
+            if (rulePath.isEmpty() && normalizeHost(ruleHost).equals(normalizedTarget)) {
+                singleMatch = ruleNode;
+                matchCount++;
+            }
+        }
+        return matchCount == 1 && receipt.getAppliedRule().equals(singleMatch);
     }
 
     /**
@@ -571,6 +623,56 @@ public class CloudflareApiClient {
         public boolean matchesSyncedTarget(String tunnelId) {
             return matchesTunnelTarget(tunnelId) && proxied;
         }
+
+        public boolean matchesAppliedRecord(DnsCnameRecord applied) {
+            if (applied == null) {
+                return false;
+            }
+            if (!applied.id.isEmpty() && !this.id.equals(applied.id)) {
+                return false;
+            }
+            if (!applied.name.isEmpty() && !normalizeHost(this.name).equals(normalizeHost(applied.name))) {
+                return false;
+            }
+            return this.content.equalsIgnoreCase(applied.content)
+                && this.proxied == applied.proxied
+                && this.ttl == applied.ttl;
+        }
+    }
+
+    public static final class DnsSyncReceipt {
+        private final boolean changed;
+        private final boolean createdNewRecord;
+        private final DnsCnameRecord priorRecord;
+        private final DnsCnameRecord appliedRecord;
+
+        public DnsSyncReceipt(
+            boolean changed,
+            boolean createdNewRecord,
+            DnsCnameRecord priorRecord,
+            DnsCnameRecord appliedRecord
+        ) {
+            this.changed = changed;
+            this.createdNewRecord = createdNewRecord;
+            this.priorRecord = priorRecord;
+            this.appliedRecord = appliedRecord;
+        }
+
+        public boolean isChanged() {
+            return changed;
+        }
+
+        public boolean isCreatedNewRecord() {
+            return createdNewRecord;
+        }
+
+        public DnsCnameRecord getPriorRecord() {
+            return priorRecord;
+        }
+
+        public DnsCnameRecord getAppliedRecord() {
+            return appliedRecord;
+        }
     }
 
     public DnsCnameRecord getDnsCnameRecord(String zoneId, String hostName) throws CloudflareApiException {
@@ -592,9 +694,21 @@ public class CloudflareApiClient {
         return null;
     }
 
-    public void syncDnsCname(String zoneId, String hostName, String tunnelId) throws CloudflareApiException {
+    public DnsSyncReceipt syncDnsCname(String zoneId, String hostName, String tunnelId) throws CloudflareApiException {
+        return syncDnsCname(zoneId, hostName, tunnelId, null);
+    }
+
+    public DnsSyncReceipt syncDnsCname(
+        String zoneId,
+        String hostName,
+        String tunnelId,
+        AtomicReference<DnsCnameRecord> observedPriorOut
+    ) throws CloudflareApiException {
         String targetContent = tunnelId + ".cfargotunnel.com";
         DnsCnameRecord existingRecord = getDnsCnameRecord(zoneId, hostName);
+        if (observedPriorOut != null) {
+            observedPriorOut.set(existingRecord);
+        }
 
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("type", "CNAME");
@@ -606,22 +720,76 @@ public class CloudflareApiClient {
         if (existingRecord != null) {
             if (existingRecord.matchesSyncedTarget(tunnelId)) {
                 Constants.LOG.debug("DNS CNAME for {} already points to {}", hostName, targetContent);
-                return;
+                return new DnsSyncReceipt(false, false, existingRecord, existingRecord);
             }
             if (!existingRecord.getId().isEmpty()) {
                 // PATCH updates only the managed CNAME fields, preserving existing comments and tags.
-                request(
+                JsonNode updated = request(
                     "PATCH",
                     "/zones/" + urlEncode(zoneId) + "/dns_records/" + urlEncode(existingRecord.getId()),
                     payload
                 );
+                DnsCnameRecord applied = parseDnsCnameRecord(
+                    updated, existingRecord.getId(), hostName, targetContent, true, 1
+                );
                 Constants.LOG.info("Updated DNS CNAME {} -> {}", hostName, targetContent);
-                return;
+                return new DnsSyncReceipt(true, false, existingRecord, applied);
             }
         }
 
-        request("POST", "/zones/" + urlEncode(zoneId) + "/dns_records", payload);
+        JsonNode created = request("POST", "/zones/" + urlEncode(zoneId) + "/dns_records", payload);
+        DnsCnameRecord applied = parseDnsCnameRecord(created, "", hostName, targetContent, true, 1);
         Constants.LOG.info("Created DNS CNAME {} -> {}", hostName, targetContent);
+        return new DnsSyncReceipt(true, true, null, applied);
+    }
+
+    private static DnsCnameRecord parseDnsCnameRecord(
+        JsonNode node,
+        String fallbackId,
+        String fallbackName,
+        String fallbackContent,
+        boolean fallbackProxied,
+        int fallbackTtl
+    ) {
+        if (node == null || !node.isObject()) {
+            return new DnsCnameRecord(fallbackId, fallbackName, fallbackContent, fallbackProxied, fallbackTtl);
+        }
+        return new DnsCnameRecord(
+            node.path("id").asText(fallbackId),
+            node.path("name").asText(fallbackName),
+            node.path("content").asText(fallbackContent),
+            node.path("proxied").asBoolean(fallbackProxied),
+            node.path("ttl").asInt(fallbackTtl)
+        );
+    }
+
+    public void rollbackDnsCname(String zoneId, String hostName, String appliedTunnelId, DnsSyncReceipt receipt)
+        throws CloudflareApiException {
+        if (receipt == null || !receipt.isChanged()) {
+            return;
+        }
+        DnsCnameRecord applied = receipt.getAppliedRecord();
+        if (applied == null) {
+            throw new CloudflareApiException(
+                "DNS rollback conflict for '" + hostName + "': missing applied DNS receipt; leaving live record intact."
+            );
+        }
+        DnsCnameRecord liveDns = getDnsCnameRecord(zoneId, hostName);
+        if (liveDns == null) {
+            if (receipt.isCreatedNewRecord()) {
+                return;
+            }
+            throw new CloudflareApiException(
+                "DNS rollback conflict for '" + hostName + "': live CNAME record was removed concurrently; leaving newer state intact."
+            );
+        }
+        if (!liveDns.matchesAppliedRecord(applied)) {
+            throw new CloudflareApiException(
+                "DNS rollback conflict for '" + hostName
+                    + "': live CNAME record ID or managed fields changed after sync; leaving newer record intact."
+            );
+        }
+        restoreDnsCnameRecord(zoneId, hostName, appliedTunnelId, receipt.getPriorRecord(), liveDns);
     }
 
     public void restoreDnsCnameRecord(
@@ -852,8 +1020,34 @@ public class CloudflareApiClient {
 
             Object bodyHandler = bodyHandlersClass.getMethod("ofString", Charset.class)
                 .invoke(null, StandardCharsets.UTF_8);
-            Method sendMethod = httpClientClass.getMethod("send", requestClass, bodyHandlerClass);
-            Object httpResponse = sendMethod.invoke(client, httpRequest, bodyHandler);
+            Method sendAsyncMethod = httpClientClass.getMethod("sendAsync", requestClass, bodyHandlerClass);
+            CompletableFuture<?> responseFuture = (CompletableFuture<?>) sendAsyncMethod.invoke(
+                client, httpRequest, bodyHandler
+            );
+            long overallTimeoutMs = (long) CONNECT_TIMEOUT_MS + READ_TIMEOUT_MS;
+            Object httpResponse;
+            try {
+                httpResponse = responseFuture.get(overallTimeoutMs, TimeUnit.MILLISECONDS);
+            } catch (TimeoutException timeout) {
+                responseFuture.cancel(true);
+                throw new SocketTimeoutException(
+                    "Timed out reading response body after " + overallTimeoutMs + " ms"
+                );
+            } catch (InterruptedException interrupted) {
+                responseFuture.cancel(true);
+                Thread.currentThread().interrupt();
+                throw new CloudflareApiException(
+                    -1,
+                    "Cloudflare API request interrupted on " + method + " " + path + ": " + interrupted.getMessage(),
+                    interrupted
+                );
+            } catch (ExecutionException execError) {
+                Throwable cause = execError.getCause();
+                if (cause instanceof IOException) {
+                    throw (IOException) cause;
+                }
+                throw new IOException("Failed to execute HTTP " + method + " via Java 11 HttpClient", cause);
+            }
 
             int status = (Integer) responseClass.getMethod("statusCode").invoke(httpResponse);
             String responseBody = (String) responseClass.getMethod("body").invoke(httpResponse);

@@ -62,8 +62,8 @@ public class ProcessHandler {
         boolean logOutput
     ) {
         Process process = null;
-        Future<?> stdoutFuture = null;
-        Future<?> stderrFuture = null;
+        Future<Boolean> stdoutFuture = null;
+        Future<Boolean> stderrFuture = null;
         try {
             synchronized (this) {
                 process = createProcess(subCommand);
@@ -93,9 +93,16 @@ public class ProcessHandler {
                 return null;
             }
 
-            awaitCapture(stdoutFuture);
-            awaitCapture(stderrFuture);
+            boolean stdoutIncomplete = awaitCapture(stdoutFuture);
+            boolean stderrIncomplete = awaitCapture(stderrFuture);
             processes.remove(process);
+            if (stdoutIncomplete || stderrIncomplete) {
+                Constants.LOG.error(
+                    "Command output capture was incomplete or truncated ({} lines / {} bytes limit); treating command result as an error.",
+                    DEFAULT_MAX_CAPTURE_LINES, DEFAULT_MAX_CAPTURE_BYTES
+                );
+                return null;
+            }
             int exitCode = process.exitValue();
             if (exitCode != 0) {
                 Constants.LOG.error("Command failed with exit code: {}", exitCode);
@@ -121,17 +128,19 @@ public class ProcessHandler {
         }
     }
 
-    private static void awaitCapture(Future<?> future) throws InterruptedException {
+    private static boolean awaitCapture(Future<Boolean> future) throws InterruptedException {
         if (future == null) {
-            return;
+            return false;
         }
         try {
-            future.get(5, TimeUnit.SECONDS);
+            return Boolean.TRUE.equals(future.get(5, TimeUnit.SECONDS));
         } catch (TimeoutException e) {
             future.cancel(true);
             Constants.LOG.debug("Timed out waiting for process output capture to finish");
+            return true;
         } catch (ExecutionException e) {
             Constants.LOG.debug("Process output capture failed: {}", e.getMessage());
+            return true;
         }
     }
 
@@ -199,7 +208,7 @@ public class ProcessHandler {
         captureProcessOutput(inputStream, cb, Integer.MAX_VALUE, Long.MAX_VALUE, true);
     }
 
-    static void captureProcessOutput(
+    static boolean captureProcessOutput(
         InputStream inputStream,
         Consumer<String> cb,
         int maxLines,
@@ -207,7 +216,7 @@ public class ProcessHandler {
         boolean logOutput
     ) {
         if (inputStream == null) {
-            return;
+            return false;
         }
         final int effectiveMaxLines = Math.max(0, maxLines);
         final long effectiveMaxBytes = Math.max(0L, maxBytes);
@@ -309,6 +318,7 @@ public class ProcessHandler {
         } catch (IOException e) {
             Constants.LOG.debug("Process stream closed: {}", e.getMessage());
         }
+        return truncated;
     }
 
     private static void emitCapturedLine(ByteArrayOutputStream lineBuffer, Consumer<String> cb, boolean logOutput) {

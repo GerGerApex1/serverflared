@@ -202,11 +202,9 @@ public class RemoteManagedTunnel extends AbstractManagedTunnel {
 
             final boolean existingTunnel = (record != null);
             final String serviceUrl = formatTcpServiceUrl(localIp, serverPort);
-            final CloudflareApiClient.DnsCnameRecord priorDnsRecord = remote.isManageDns()
-                ? api.getDnsCnameRecord(resolvedZoneId, config.getHostName())
-                : null;
 
             final AtomicReference<CloudflareApiClient.IngressUpdateReceipt> receiptRef = new AtomicReference<>();
+            final AtomicReference<CloudflareApiClient.IngressUpdateReceipt> plannedReceiptRef = new AtomicReference<>();
             final AtomicReference<Exception> ingressFailure = new AtomicReference<>();
 
             BooleanSupplier ingressWriteAction = () -> {
@@ -217,7 +215,7 @@ public class RemoteManagedTunnel extends AbstractManagedTunnel {
                         : null;
 
                     CloudflareApiClient.IngressUpdateReceipt applied = api.updateTunnelIngress(
-                        resolvedAccountId, tunnelId, config.getHostName(), serviceUrl, previousConfig
+                        resolvedAccountId, tunnelId, config.getHostName(), serviceUrl, previousConfig, plannedReceiptRef
                     );
                     receiptRef.set(applied);
                     Constants.LOG.info("Synced remote tunnel ingress: {} -> {}", config.getHostName(), serviceUrl);
@@ -234,7 +232,13 @@ public class RemoteManagedTunnel extends AbstractManagedTunnel {
 
             final CloudflareApiClient.IngressUpdateReceipt receipt = receiptRef.get();
             if (!ingressCommitted) {
-                rethrowIfPresent(ingressFailure.get());
+                Exception failure = ingressFailure.get();
+                if (failure != null) {
+                    reconcileAmbiguousIngressFailure(
+                        api, resolvedAccountId, tunnelId, config.getHostName(), plannedReceiptRef.get(), failure
+                    );
+                    rethrowIfPresent(failure);
+                }
                 // Distinguish rejection before ingress PUT (receipt == null) from cancellation after PUT succeeded.
                 if (receipt != null) {
                     Constants.LOG.warn(
@@ -246,14 +250,19 @@ public class RemoteManagedTunnel extends AbstractManagedTunnel {
                 return null;
             }
 
+            final AtomicReference<CloudflareApiClient.DnsSyncReceipt> dnsReceiptRef = new AtomicReference<>();
             if (remote.isManageDns()) {
                 final AtomicBoolean dnsWriteAttempted = new AtomicBoolean(false);
+                final AtomicReference<CloudflareApiClient.DnsCnameRecord> observedPriorDns = new AtomicReference<>();
                 final AtomicReference<Exception> dnsFailure = new AtomicReference<>();
 
                 BooleanSupplier dnsWriteAction = () -> {
                     dnsWriteAttempted.set(true);
                     try {
-                        api.syncDnsCname(resolvedZoneId, config.getHostName(), tunnelId);
+                        CloudflareApiClient.DnsSyncReceipt appliedDns = api.syncDnsCname(
+                            resolvedZoneId, config.getHostName(), tunnelId, observedPriorDns
+                        );
+                        dnsReceiptRef.set(appliedDns);
                         return true;
                     } catch (CloudflareApiException | RuntimeException dnsError) {
                         dnsFailure.set(dnsError);
@@ -275,9 +284,10 @@ public class RemoteManagedTunnel extends AbstractManagedTunnel {
                             tunnelId,
                             config.getHostName(),
                             receipt,
-                            priorDnsRecord,
+                            observedPriorDns.get(),
                             dnsError,
-                            writeCoordinator
+                            writeCoordinator,
+                            dnsReceiptRef
                         );
                         if (resolution == DnsFailureResolution.CANCELED_AND_RECONCILED) {
                             return null;
@@ -301,7 +311,7 @@ public class RemoteManagedTunnel extends AbstractManagedTunnel {
                             config.getHostName()
                         );
                         reconcileDnsAndIngressSafely(
-                            api, resolvedAccountId, resolvedZoneId, tunnelId, config.getHostName(), priorDnsRecord, receipt
+                            api, resolvedAccountId, resolvedZoneId, tunnelId, config.getHostName(), dnsReceiptRef.get(), receipt
                         );
                         return null;
                     }
@@ -311,13 +321,14 @@ public class RemoteManagedTunnel extends AbstractManagedTunnel {
             if (writeCoordinator != null && receipt != null) {
                 final AtomicBoolean rolledBack = new AtomicBoolean(false);
                 final boolean dnsManaged = remote.isManageDns();
+                final CloudflareApiClient.DnsSyncReceipt finalDnsReceipt = dnsReceiptRef.get();
                 writeCoordinator.onAppliedWrite(() -> {
                     if (!rolledBack.compareAndSet(false, true)) {
                         return;
                     }
                     if (dnsManaged) {
                         reconcileDnsAndIngressSafely(
-                            api, resolvedAccountId, resolvedZoneId, tunnelId, config.getHostName(), priorDnsRecord, receipt
+                            api, resolvedAccountId, resolvedZoneId, tunnelId, config.getHostName(), finalDnsReceipt, receipt
                         );
                     } else {
                         rollbackIngressSafely(api, resolvedAccountId, tunnelId, config.getHostName(), receipt);
@@ -359,9 +370,10 @@ public class RemoteManagedTunnel extends AbstractManagedTunnel {
         CloudflareApiClient.IngressUpdateReceipt receipt,
         CloudflareApiClient.DnsCnameRecord priorDnsRecord,
         Exception dnsError,
-        WriteCommitCoordinator writeCoordinator
+        WriteCommitCoordinator writeCoordinator,
+        AtomicReference<CloudflareApiClient.DnsSyncReceipt> dnsReceiptOut
     ) {
-        if (!isAmbiguousDnsFailure(dnsError)) {
+        if (!isAmbiguousWriteFailure(dnsError)) {
             Constants.LOG.error(
                 "DNS sync rejected after ingress update for '{}'; attempting selective ingress rollback.",
                 hostName
@@ -386,7 +398,14 @@ public class RemoteManagedTunnel extends AbstractManagedTunnel {
         }
 
         if (liveDnsRecord != null && liveDnsRecord.matchesSyncedTarget(tunnelId)) {
+            boolean changed = (priorDnsRecord == null || !priorDnsRecord.matchesSyncedTarget(tunnelId));
+            CloudflareApiClient.DnsSyncReceipt recoveredReceipt = new CloudflareApiClient.DnsSyncReceipt(
+                changed, priorDnsRecord == null, priorDnsRecord, liveDnsRecord
+            );
             if (writeCoordinator == null || writeCoordinator.isStillOwner()) {
+                if (dnsReceiptOut != null) {
+                    dnsReceiptOut.set(recoveredReceipt);
+                }
                 Constants.LOG.info(
                     "DNS sync for '{}' returned an ambiguous error, but re-read confirmed CNAME already points to tunnel {}; continuing.",
                     hostName, tunnelId
@@ -397,26 +416,17 @@ public class RemoteManagedTunnel extends AbstractManagedTunnel {
                 "Re-read confirmed DNS for '{}' points to tunnel {}, but preparation was canceled; restoring prior DNS before rolling back ingress.",
                 hostName, tunnelId
             );
-            reconcileDnsAndIngressSafely(api, accountId, zoneId, tunnelId, hostName, priorDnsRecord, receipt);
+            reconcileDnsAndIngressSafely(api, accountId, zoneId, tunnelId, hostName, recoveredReceipt, receipt);
             return DnsFailureResolution.CANCELED_AND_RECONCILED;
         }
 
         if (liveDnsRecord != null && liveDnsRecord.matchesTunnelTarget(tunnelId)) {
-            // Live DNS points to the new tunnel (e.g., unproxied); restore prior DNS before touching ingress.
-            boolean priorAlreadyPointedToTunnel = (priorDnsRecord != null && priorDnsRecord.matchesTunnelTarget(tunnelId));
-            if (priorAlreadyPointedToTunnel) {
-                rollbackIngressSafely(api, accountId, tunnelId, hostName, receipt);
-            } else {
-                try {
-                    api.restoreDnsCnameRecord(zoneId, hostName, tunnelId, priorDnsRecord, liveDnsRecord);
-                    rollbackIngressSafely(api, accountId, tunnelId, hostName, receipt);
-                } catch (Exception restoreError) {
-                    Constants.LOG.error(
-                        "Failed to restore prior DNS target for '{}' after ambiguous DNS failure ({}); leaving ingress intact.",
-                        hostName, restoreError.getMessage()
-                    );
-                }
-            }
+            // Live DNS points to this tunnel with differing managed fields (e.g. unproxied);
+            // treat as a conflict and leave both the newer DNS record and ingress intact.
+            Constants.LOG.error(
+                "DNS conflict for '{}' after ambiguous write failure: live CNAME points to tunnel {} with modified managed fields; leaving DNS and ingress intact.",
+                hostName, tunnelId
+            );
             return DnsFailureResolution.FAILED;
         }
 
@@ -429,12 +439,48 @@ public class RemoteManagedTunnel extends AbstractManagedTunnel {
         return DnsFailureResolution.FAILED;
     }
 
-    private static boolean isAmbiguousDnsFailure(Exception error) {
+    private static void reconcileAmbiguousIngressFailure(
+        CloudflareApiClient api,
+        String accountId,
+        String tunnelId,
+        String hostName,
+        CloudflareApiClient.IngressUpdateReceipt plannedReceipt,
+        Exception failure
+    ) {
+        if (plannedReceipt == null || !isAmbiguousWriteFailure(failure)) {
+            return;
+        }
+        if (!plannedReceipt.isAddedNewRule()
+            && plannedReceipt.getPreviousRule() != null
+            && plannedReceipt.getPreviousRule().equals(plannedReceipt.getAppliedRule())) {
+            return;
+        }
+        Constants.LOG.warn(
+            "Ambiguous ingress PUT failure for '{}'; re-reading live ingress before deciding whether to roll back.",
+            hostName
+        );
+        try {
+            if (api.isIngressReceiptLive(accountId, tunnelId, plannedReceipt)) {
+                Constants.LOG.warn(
+                    "Live ingress for '{}' matches the intended rule after ambiguous PUT failure; rolling back.",
+                    hostName
+                );
+                rollbackIngressSafely(api, accountId, tunnelId, hostName, plannedReceipt);
+            }
+        } catch (Exception readError) {
+            Constants.LOG.error(
+                "Could not verify live ingress for '{}' after ambiguous PUT failure ({}); leaving ingress untouched.",
+                hostName, readError.getMessage()
+            );
+        }
+    }
+
+    private static boolean isAmbiguousWriteFailure(Exception error) {
         if (!(error instanceof CloudflareApiException)) {
             return true;
         }
         int status = ((CloudflareApiException) error).getHttpStatus();
-        // Explicit 4xx rejections (except 408 Request Timeout) confirm Cloudflare rejected the DNS mutation.
+        // Explicit 4xx rejections (except 408 Request Timeout) confirm Cloudflare rejected the mutation.
         return status < 400 || status >= 500 || status == 408;
     }
 
@@ -444,22 +490,25 @@ public class RemoteManagedTunnel extends AbstractManagedTunnel {
         String zoneId,
         String tunnelId,
         String hostName,
-        CloudflareApiClient.DnsCnameRecord priorDnsRecord,
+        CloudflareApiClient.DnsSyncReceipt dnsReceipt,
         CloudflareApiClient.IngressUpdateReceipt receipt
     ) {
-        boolean dnsChangedByUs = (priorDnsRecord == null || !priorDnsRecord.matchesSyncedTarget(tunnelId));
-        if (dnsChangedByUs) {
+        if (dnsReceipt != null && dnsReceipt.isChanged()) {
             try {
-                CloudflareApiClient.DnsCnameRecord liveDns = api.getDnsCnameRecord(zoneId, hostName);
-                if (liveDns != null && liveDns.matchesTunnelTarget(tunnelId)) {
-                    api.restoreDnsCnameRecord(zoneId, hostName, tunnelId, priorDnsRecord, liveDns);
-                }
+                api.rollbackDnsCname(zoneId, hostName, tunnelId, dnsReceipt);
             } catch (Exception dnsRestoreError) {
                 Constants.LOG.error(
-                    "Could not restore prior DNS CNAME for '{}' ({}); leaving ingress intact so live DNS is not broken.",
+                    "Could not safely roll back DNS CNAME for '{}' ({}); leaving newer DNS record intact.",
                     hostName, dnsRestoreError.getMessage()
                 );
-                return;
+                try {
+                    CloudflareApiClient.DnsCnameRecord liveDns = api.getDnsCnameRecord(zoneId, hostName);
+                    if (liveDns != null && liveDns.matchesTunnelTarget(tunnelId)) {
+                        return;
+                    }
+                } catch (Exception ignored) {
+                    return;
+                }
             }
         }
         rollbackIngressSafely(api, accountId, tunnelId, hostName, receipt);

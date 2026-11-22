@@ -42,6 +42,10 @@ public interface ManagedTunnel {
 
     boolean startTunnel(Config config, TunnelInfo info);
 
+    default boolean awaitEdgeConnection(long timeoutMillis, BooleanSupplier isStillAllowed) {
+        return isTunnelRunning() && (isStillAllowed == null || isStillAllowed.getAsBoolean());
+    }
+
     void terminateProcesses();
 
     boolean isTunnelRunning();
