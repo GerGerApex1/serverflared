@@ -28,6 +28,7 @@ object Publishing {
 				return@configure
 			}
 			val mrStaging = envTrue("TEST_PUBLISHING_WITH_MR_STAGING")
+			val enableCurseforge = envTrue("ENABLE_CURSEFORGE")
 
 			val modrinthAccessToken = env("MODRINTH_API_TOKEN")
 			val curseforgeAccessToken = env("CURSEFORGE_API_TOKEN")
@@ -67,7 +68,7 @@ object Publishing {
 				"${prop("mod.name")} $modVersion ${loader.replaceFirstChar(Char::titlecase)} $currentVersion"
 
 			modrinth(deps, currentVersion, additionalVersions, mrStaging, modrinthAccessToken)
-			if (!mrStaging) curseforge(
+			if (!mrStaging && enableCurseforge) curseforge(
 				deps,
 				currentVersion,
 				additionalVersions,
