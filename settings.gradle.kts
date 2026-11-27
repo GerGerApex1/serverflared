@@ -107,17 +107,10 @@ stonecutter {
 		}
 	}
 
-	val spigotEntries = listOf("1.8.8-spigot", "1.16.1-spigot").filter(::shouldInclude)
-	if (spigotEntries.isNotEmpty()) {
-		create("spigot") {
-			for (projectName in spigotEntries) {
-				version(projectName).buildscript = "build.spigot.gradle.kts"
-			}
-			if ("1.16.1-spigot" !in spigotEntries) {
-				version("1.16.1-spigot")
-			}
-			vcsVersion = "1.16.1-spigot"
-		}
+	create("spigot") {
+		version("1.16.1-spigot", "1.16.1").buildscript = "build.spigot.gradle.kts"
+		version("1.8.8-spigot", "1.8.8").buildscript = "build.spigot.gradle.kts"
+		vcsVersion = "1.16.1-spigot"
 	}
 }
 

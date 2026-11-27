@@ -36,7 +36,7 @@ stonecutter tasks {
 stonecutter parameters {
 	val parts = node.metadata.version.split("-")
 	val pre1_16 = parts[0] == "1.8.8"
-	constants.match(node.metadata.project.substringAfterLast('-'), "fabric", "neoforge", "forge")
+	constants.match(node.metadata.project.substringAfterLast('-'), "fabric", "neoforge", "forge", "spigot")
 	filters.include("**/*.fsh", "**/*.vsh")
 	swaps["mod_version"] = "\"" + property("mod.version") + "\";"
 	swaps["mod_id"] = "\"" + property("mod.id") + "\";"
